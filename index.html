@@ -16,7 +16,8 @@
         .custom-scroll::-webkit-scrollbar { display: none; }
         .animate-fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        :focus-visible { outline: 3px solid #0d9488 !important; outline-offset: 2px; }
+        .post-card { transition: transform 0.2s ease; }
+        .post-card:active { scale: 0.98; }
     </style>
 </head>
 <body class="bg-slate-50 font-sans text-gray-900">
@@ -80,7 +81,7 @@
                                 <i class="fas fa-leaf text-teal-300"></i>
                                 <span class="text-xl font-black italic uppercase tracking-tight">Growing Minds</span>
                             </div>
-                            <button onClick={() => supabase.auth.signOut()} class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20">Sign Out</button>
+                            <button onClick={() => supabase.auth.signOut()} class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20 uppercase font-bold">Sign Out</button>
                         </div>
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 text-xl">{profile?.role === 'admin' ? '👑' : '🧑‍🏫'}</div>
@@ -98,7 +99,7 @@
                         {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel />}
                     </main>
 
-                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg">
+                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg z-50">
                         <NavBtn icon="house" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
                         <NavBtn icon="book-bookmark" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
                         <NavBtn icon="comment-dots" label="Support" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
@@ -124,12 +125,10 @@
             const [uploading, setUploading] = useState(false);
 
             const fetchPosts = async () => {
-                // Fetching posts WITH educator emails via the Profile join
                 const { data, error } = await supabase
                     .from('posts')
                     .select('*, profiles(email)')
                     .order('created_at', { ascending: false });
-                
                 if (error) console.error("Feed Error:", error.message);
                 setPosts(data || []);
             };
@@ -138,48 +137,86 @@
 
             const handleUpload = async (e) => {
                 e.preventDefault();
-                if (!file || !content) return alert("Photo and caption required.");
+                if (!file || !content) return alert("Please add a photo and a caption.");
                 setUploading(true);
+
                 try {
-                    const fileName = `${Date.now()}-${file.name}`;
-                    await supabase.storage.from('post-image').upload(fileName, file);
+                    // --- CLIENT SIDE COMPRESSION ---
+                    const compressedFile = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
+                        reader.onload = (event) => {
+                            const img = new Image();
+                            img.src = event.target.result;
+                            img.onload = () => {
+                                const canvas = document.createElement('canvas');
+                                const MAX_WIDTH = 1200;
+                                const scaleSize = MAX_WIDTH / img.width;
+                                canvas.width = MAX_WIDTH;
+                                canvas.height = img.height * scaleSize;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                canvas.toBlob((blob) => {
+                                    resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                                }, 'image/jpeg', 0.7);
+                            };
+                        };
+                    });
+
+                    const fileName = `${Date.now()}-${compressedFile.name}`;
+                    const { error: storageError } = await supabase.storage.from('post-image').upload(fileName, compressedFile);
+                    if (storageError) throw storageError;
+
                     const { data: { publicUrl } } = supabase.storage.from('post-image').getPublicUrl(fileName);
-                    await supabase.from('posts').insert([{ user_id: user.id, content, image_url: publicUrl }]);
+                    const { error: dbError } = await supabase.from('posts').insert([{ 
+                        user_id: user.id, 
+                        content, 
+                        image_url: publicUrl 
+                    }]);
+                    if (dbError) throw dbError;
+
                     setContent(''); setFile(null); fetchPosts();
-                } catch (err) { alert("Upload failed."); }
-                setUploading(false);
+                    alert("Update shared with the community!");
+                } catch (err) {
+                    alert("Error: " + err.message);
+                } finally {
+                    setUploading(false);
+                }
             };
 
             return (
                 <div class="space-y-6 animate-fade-in">
                     <div class="bg-white p-4 rounded-2xl border-2 border-teal-50 shadow-sm">
-                        <textarea placeholder="Share your progress..." class="w-full p-3 text-sm bg-slate-50 rounded-xl border border-slate-100 focus:ring-2 focus:ring-teal-500 outline-none mb-3" value={content} onChange={e => setContent(e.target.value)} />
+                        <textarea placeholder="How's your Gardyn growing?" class="w-full p-3 text-sm bg-slate-50 rounded-xl border border-slate-100 focus:ring-2 focus:ring-teal-500 outline-none mb-3 resize-none" rows="3" value={content} onChange={e => setContent(e.target.value)} />
                         <div class="flex items-center justify-between">
-                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold hover:bg-teal-100">
-                                <i class="fas fa-camera mr-2"></i>{file ? "✓ Photo Ready" : "Add Photo"}
+                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold hover:bg-teal-100 transition-colors">
+                                <i class="fas fa-camera mr-2"></i>{file ? "✓ Ready" : "Add Photo"}
                                 <input type="file" accept="image/*" class="sr-only" onChange={e => setFile(e.target.files[0])} />
                             </label>
-                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold disabled:bg-slate-300">
-                                {uploading ? 'Posting...' : 'Share Update'}
+                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold disabled:bg-slate-300 shadow-md">
+                                {uploading ? 'Processing...' : 'Post Update'}
                             </button>
                         </div>
                     </div>
+
+                    {posts.length === 0 && <div class="text-center py-20 text-slate-400 italic">No posts yet. Start the conversation!</div>}
+
                     {posts.map(post => (
-                        <article key={post.id} class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                        <article key={post.id} class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden post-card">
                             <div class="p-4 flex items-center justify-between">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white font-bold text-xs">
+                                    <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-inner">
                                         {post.profiles?.email?.[0].toUpperCase() || 'E'}
                                     </div>
                                     <div>
                                         <p class="text-xs font-bold text-gray-900">{post.profiles?.email.split('@')[0] || 'Educator'}</p>
-                                        <p class="text-[9px] text-gray-400 uppercase font-bold tracking-tight">Gardyn Project</p>
+                                        <p class="text-[9px] text-gray-400 uppercase font-black tracking-widest">Project Member</p>
                                     </div>
                                 </div>
-                                <span class="text-[9px] font-bold text-slate-300">{formatDate(post.created_at)}</span>
+                                <span class="text-[10px] font-bold text-slate-300">{formatDate(post.created_at)}</span>
                             </div>
-                            <img src={post.image_url} class="w-full h-72 object-cover bg-slate-50" />
-                            <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed">{post.content}</p></div>
+                            <img src={post.image_url} class="w-full h-80 object-cover bg-slate-100" loading="lazy" />
+                            <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed font-medium">{post.content}</p></div>
                         </article>
                     ))}
                 </div>
@@ -194,12 +231,12 @@
                     <h2 class="text-xl font-bold text-gray-900 px-1">Resource Hub</h2>
                     {res.map(r => (
                         <a href={formatUrl(r.url)} target="_blank" rel="noopener noreferrer" key={r.id} class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-teal-400 focus:ring-2 focus:ring-teal-500 group transition-all">
-                            <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-lg flex items-center justify-center group-hover:bg-teal-700 group-hover:text-white transition-colors"><i class="fas fa-file-lines"></i></div>
+                            <div class="w-12 h-12 bg-teal-50 text-teal-700 rounded-xl flex items-center justify-center group-hover:bg-teal-700 group-hover:text-white transition-colors"><i class="fas fa-file-pdf text-xl"></i></div>
                             <div class="flex-1 text-left">
                                 <p class="font-bold text-sm text-gray-900">{r.title}</p>
-                                <p class="text-[10px] text-gray-500 font-bold uppercase mt-1 tracking-widest">{r.category}</p>
+                                <p class="text-[10px] text-gray-400 font-bold uppercase mt-1 tracking-widest">{r.category}</p>
                             </div>
-                            <i class="fas fa-external-link-alt text-xs text-slate-300"></i>
+                            <i class="fas fa-chevron-right text-xs text-slate-300"></i>
                         </a>
                     ))}
                 </section>
@@ -208,13 +245,13 @@
 
         function MessageView() {
             return (
-                <section class="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+                <section class="bg-emerald-50 p-6 rounded-[2.5rem] border border-emerald-100 shadow-inner">
                     <h2 class="text-xl font-bold text-emerald-900">Support Desk</h2>
-                    <p class="text-sm text-emerald-700 mt-2 mb-6">Need help with your setup? Send us a message.</p>
+                    <p class="text-sm text-emerald-700 mt-2 mb-6 leading-relaxed">Have a question for the project leads? Send a message directly to our team.</p>
                     <form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4">
-                        <input name="name" placeholder="Full Name" class="w-full p-3 rounded-xl border-none text-sm shadow-sm" required />
-                        <textarea name="message" class="w-full p-4 rounded-2xl border-none h-32 text-sm shadow-sm" placeholder="How can we help?" required></textarea>
-                        <button class="w-full bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg">Send Message</button>
+                        <input name="name" placeholder="Full Name" class="w-full p-4 rounded-2xl border-none text-sm shadow-sm focus:ring-2 focus:ring-emerald-500" required />
+                        <textarea name="message" class="w-full p-4 rounded-2xl border-none h-32 text-sm shadow-sm focus:ring-2 focus:ring-emerald-500 resize-none" placeholder="Message details..." required></textarea>
+                        <button class="w-full bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform hover:bg-emerald-800">Send Support Request</button>
                     </form>
                 </section>
             );
@@ -241,45 +278,45 @@
                 refresh();
             };
 
-            const delPost = async (id) => { if(confirm("Delete post?")) { await supabase.from('posts').delete().eq('id', id); refresh(); } };
+            const delPost = async (id) => { if(confirm("Permanently delete this post?")) { await supabase.from('posts').delete().eq('id', id); refresh(); } };
 
             return (
                 <div class="space-y-8 animate-fade-in pb-10">
-                    <div class="bg-white p-5 rounded-2xl border-2 border-dashed border-teal-200">
-                        <h3 class="font-bold text-sm mb-4 text-teal-800 uppercase tracking-widest">Add Resource</h3>
+                    <div class="bg-white p-5 rounded-3xl border-2 border-dashed border-teal-200 shadow-sm">
+                        <h3 class="font-bold text-xs mb-4 text-teal-800 uppercase tracking-widest">Library Management</h3>
                         <form onSubmit={addRes} class="space-y-3">
-                            <input placeholder="Title" class="w-full p-2 bg-slate-50 rounded border text-sm" value={newRes.title} onChange={e => setNewRes({...newRes, title: e.target.value})} required />
-                            <input placeholder="URL" class="w-full p-2 bg-slate-50 rounded border text-sm" value={newRes.url} onChange={e => setNewRes({...newRes, url: e.target.value})} required />
-                            <button class="w-full bg-teal-700 text-white py-2 rounded-lg font-bold text-xs uppercase">Post to Library</button>
+                            <input placeholder="Resource Title" class="w-full p-3 bg-slate-50 rounded-xl border text-sm focus:ring-2 focus:ring-teal-500 outline-none" value={newRes.title} onChange={e => setNewRes({...newRes, title: e.target.value})} required />
+                            <input placeholder="URL (e.g. Google Drive link)" class="w-full p-3 bg-slate-50 rounded-xl border text-sm focus:ring-2 focus:ring-teal-500 outline-none" value={newRes.url} onChange={e => setNewRes({...newRes, url: e.target.value})} required />
+                            <button class="w-full bg-teal-700 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-widest">Add to Resource Hub</button>
                         </form>
                     </div>
 
                     <div class="space-y-3">
-                        <h3 class="font-bold text-xs text-gray-500 uppercase tracking-widest pl-1">Moderate Feed</h3>
+                        <h3 class="font-bold text-xs text-slate-500 uppercase tracking-widest pl-2">Moderate Posts</h3>
                         <div class="space-y-2">
                             {posts.map(p => (
-                                <div key={p.id} class="bg-white border rounded-xl p-3 flex items-center justify-between shadow-sm">
+                                <div key={p.id} class="bg-white border rounded-2xl p-3 flex items-center justify-between shadow-sm">
                                     <div class="flex items-center gap-3 overflow-hidden">
-                                        <img src={p.image_url} class="w-10 h-10 rounded object-cover" />
+                                        <img src={p.image_url} class="w-12 h-12 rounded-lg object-cover" />
                                         <div class="truncate">
                                             <p class="text-[10px] font-bold text-gray-800 truncate">{p.profiles?.email}</p>
                                             <p class="text-[9px] text-gray-400 truncate">{p.content}</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => delPost(p.id)} class="text-red-400 p-2"><i class="fas fa-trash"></i></button>
+                                    <button onClick={() => delPost(p.id)} class="text-red-400 hover:bg-red-50 p-3 rounded-full transition-colors"><i class="fas fa-trash-alt"></i></button>
                                 </div>
                             ))}
                         </div>
                     </div>
 
                     <div class="space-y-3">
-                        <h3 class="font-bold text-xs text-gray-500 uppercase tracking-widest pl-1">Teacher Access</h3>
-                        <div class="bg-white border rounded-xl divide-y overflow-hidden">
+                        <h3 class="font-bold text-xs text-slate-500 uppercase tracking-widest pl-2">User Roles</h3>
+                        <div class="bg-white border rounded-2xl divide-y overflow-hidden shadow-sm">
                             {users.map(u => (
                                 <div key={u.id} class="flex items-center justify-between p-4 bg-white">
-                                    <span class="text-[10px] font-bold text-gray-700 truncate w-32">{u.email}</span>
-                                    <select value={u.role} onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refresh(); }} class="text-[10px] border rounded p-1 font-bold text-teal-700">
-                                        <option value="teacher">TEACHER</option><option value="admin">LEAD</option>
+                                    <span class="text-[11px] font-bold text-gray-700 truncate w-32">{u.email}</span>
+                                    <select value={u.role} onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refresh(); }} class="text-[10px] border-slate-200 rounded-lg p-1.5 font-bold text-teal-700 focus:ring-2 focus:ring-teal-500">
+                                        <option value="teacher">TEACHER</option><option value="admin">ADMIN</option>
                                     </select>
                                 </div>
                             ))}
@@ -301,23 +338,32 @@
             };
 
             const handleForgot = async () => {
-                if (!email) return alert("Enter email.");
+                if (!email) return alert("Please enter your email first.");
                 await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
-                alert("Check your email!");
+                alert("Password reset instructions sent to your email!");
             };
 
             return (
-                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
-                    <i class="fas fa-seedling text-5xl mb-6 text-teal-300"></i>
-                    <h1 class="text-3xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
-                    <form onSubmit={handleAuth} class="w-full max-w-xs space-y-4">
-                        <input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none focus:ring-4 focus:ring-teal-400" onChange={e => setEmail(e.target.value)} required />
-                        <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none focus:ring-4 focus:ring-teal-400" onChange={e => setPassword(e.target.value)} required />
-                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl hover:bg-teal-400 transition">{mode === 'login' ? 'Login' : 'Join Project'}</button>
-                    </form>
-                    <div class="mt-8 flex flex-col gap-4 items-center opacity-70">
-                        <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="text-xs underline">{mode === 'login' ? "New educator? Create account" : "Back to login"}</button>
-                        <button onClick={handleForgot} class="text-[10px] uppercase font-bold tracking-widest">Forgot Password?</button>
+                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white relative overflow-hidden">
+                    <div class="absolute top-[-10%] left-[-10%] w-64 h-64 bg-teal-800 rounded-full blur-3xl opacity-50"></div>
+                    <div class="absolute bottom-[-10%] right-[-10%] w-64 h-64 bg-emerald-800 rounded-full blur-3xl opacity-50"></div>
+                    
+                    <div class="relative z-10 flex flex-col items-center w-full max-w-xs">
+                        <i class="fas fa-seedling text-6xl mb-6 text-teal-300 drop-shadow-lg"></i>
+                        <h1 class="text-3xl font-black italic mb-10 uppercase tracking-tighter text-center">Growing Minds</h1>
+                        <form onSubmit={handleAuth} class="w-full space-y-4">
+                            <input type="email" placeholder="Educator Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none focus:ring-4 focus:ring-teal-400 shadow-xl" onChange={e => setEmail(e.target.value)} required />
+                            <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none focus:ring-4 focus:ring-teal-400 shadow-xl" onChange={e => setPassword(e.target.value)} required />
+                            <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl hover:bg-teal-400 transition transform active:scale-95 uppercase tracking-widest">
+                                {mode === 'login' ? 'Login' : 'Request Access'}
+                            </button>
+                        </form>
+                        <div class="mt-10 flex flex-col gap-5 items-center opacity-80">
+                            <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="text-xs font-bold underline decoration-teal-400 underline-offset-4 tracking-wide">
+                                {mode === 'login' ? "New educator? Join the project" : "Already have access? Login"}
+                            </button>
+                            <button onClick={handleForgot} class="text-[10px] uppercase font-black tracking-[0.2em] text-teal-300">Forgot Password?</button>
+                        </div>
                     </div>
                 </div>
             );
@@ -329,14 +375,14 @@
                 e.preventDefault();
                 const { error } = await supabase.auth.updateUser({ password: newPass });
                 if (error) alert(error.message);
-                else { alert("Saved!"); setRecoveryMode(false); }
+                else { alert("Password updated successfully!"); setRecoveryMode(false); }
             };
             return (
                 <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
-                    <h2 class="text-2xl font-bold mb-6 italic uppercase">Reset Password</h2>
+                    <h2 class="text-2xl font-bold mb-6 italic uppercase tracking-tight">Set New Password</h2>
                     <form onSubmit={handleUpdate} class="w-full max-w-xs space-y-4">
-                        <input type="password" placeholder="New Password" class="w-full p-4 rounded-2xl text-gray-900" onChange={e => setNewPass(e.target.value)} required />
-                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl">Update Password</button>
+                        <input type="password" placeholder="New Password" class="w-full p-4 rounded-2xl text-gray-900 shadow-xl" onChange={e => setNewPass(e.target.value)} required />
+                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl uppercase tracking-widest">Save Password</button>
                     </form>
                 </div>
             );
