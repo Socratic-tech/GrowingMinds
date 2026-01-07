@@ -16,8 +16,12 @@
         .custom-scroll::-webkit-scrollbar { display: none; }
         .animate-fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        /* High visibility focus ring for ADA */
-        :focus-visible { outline: 3px solid #0d9488 !important; outline-offset: 2px; }
+        
+        /* ADA Compliance: Visible Focus Rings */
+        :focus-visible { 
+            outline: 3px solid #0d9488 !important; 
+            outline-offset: 2px; 
+        }
     </style>
 </head>
 <body class="bg-slate-50 font-sans text-gray-900">
@@ -31,6 +35,12 @@
         const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT';
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+        // --- HELPER: URL FORMATTER (Prevents Blank Pages) ---
+        const formatUrl = (url) => {
+            if (!url) return "#";
+            return url.startsWith('http') ? url : `https://${url}`;
+        };
+
         function App() {
             const [user, setUser] = useState(null);
             const [profile, setProfile] = useState(null);
@@ -39,32 +49,51 @@
             const [recoveryMode, setRecoveryMode] = useState(false);
 
             useEffect(() => {
-                supabase.auth.onAuthStateChange(async (event, session) => {
+                // Listen for Auth Events (Login, Logout, Password Recovery)
+                const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
                     if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
-                    if (session) fetchProfile(session.user);
-                    else { setUser(null); setProfile(null); setLoading(false); }
+                    
+                    if (session) {
+                        fetchProfile(session.user);
+                    } else {
+                        setUser(null);
+                        setProfile(null);
+                        setLoading(false);
+                    }
                 });
+
+                return () => subscription.unsubscribe();
             }, []);
 
             async function fetchProfile(authUser) {
                 let { data } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
+                
+                // Auto-create profile if missing
                 if (!data) {
                     const { data: newP } = await supabase.from('profiles').insert([{ 
-                        id: authUser.id, email: authUser.email, role: 'teacher' 
+                        id: authUser.id, 
+                        email: authUser.email, 
+                        role: 'teacher' 
                     }]).select().single();
                     data = newP;
                 }
+                
                 setUser(authUser);
                 setProfile(data);
                 setLoading(false);
             }
 
             if (recoveryMode) return <PasswordUpdateScreen setRecoveryMode={setRecoveryMode} />;
-            if (loading) return <div class="h-screen flex items-center justify-center text-teal-600" aria-busy="true" aria-label="Loading app"><i class="fas fa-seedling animate-bounce text-5xl"></i></div>;
+            if (loading) return (
+                <div class="h-screen flex items-center justify-center text-teal-600" aria-busy="true">
+                    <i class="fas fa-seedling animate-bounce text-5xl"></i>
+                </div>
+            );
             if (!user) return <AuthScreen />;
 
             return (
                 <div class="max-w-md mx-auto min-h-screen pb-24 bg-white relative shadow-2xl flex flex-col">
+                    {/* Header */}
                     <header class="bg-gradient-to-br from-teal-700 to-emerald-800 p-6 text-white rounded-b-[2.5rem] shadow-lg">
                         <div class="flex justify-between items-center mb-6">
                             <div class="flex items-center gap-2">
@@ -73,39 +102,43 @@
                             </div>
                             <button 
                                 onClick={() => supabase.auth.signOut()} 
+                                aria-label="Sign out"
                                 class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20 focus:ring-2 focus:ring-white"
-                                aria-label="Sign out of your account"
                             >Sign Out</button>
                         </div>
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 text-xl" aria-hidden="true">
                                 {profile?.role === 'admin' ? '👑' : '🧑‍🏫'}
                             </div>
-                            <div class="overflow-hidden">
+                            <div>
                                 <p class="text-xs text-teal-100 font-medium italic">Educator Portal</p>
-                                <p class="font-bold text-lg leading-tight truncate" aria-label={`Logged in as ${user.email}`}>{user.email.split('@')[0]}</p>
+                                <p class="font-bold text-lg leading-tight truncate w-48">{user.email.split('@')[0]}</p>
                             </div>
                         </div>
                     </header>
 
-                    <main id="main-content" class="flex-1 p-5 overflow-y-auto custom-scroll" role="main">
+                    {/* Content Area */}
+                    <main class="flex-1 p-5 overflow-y-auto custom-scroll" role="main">
                         {activeTab === 'feed' && <CommunityFeed user={user} />}
                         {activeTab === 'library' && <LibraryView />}
                         {activeTab === 'messages' && <MessageView />}
                         {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel />}
                     </main>
 
-                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg" role="navigation" aria-label="Main Navigation">
+                    {/* Navigation */}
+                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg" aria-label="Main menu">
                         <NavBtn icon="house" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
                         <NavBtn icon="book-bookmark" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
                         <NavBtn icon="comment-dots" label="Support" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
-                        {profile?.role === 'admin' && <NavBtn icon="shield-halved" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
+                        {profile?.role === 'admin' && (
+                            <NavBtn icon="shield-halved" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />
+                        )}
                     </nav>
                 </div>
             );
         }
 
-        // --- ACCESSIBLE COMPONENTS ---
+        // --- SUB-COMPONENTS ---
 
         function NavBtn({ icon, label, active, onClick }) {
             return (
@@ -113,9 +146,9 @@
                     onClick={onClick} 
                     aria-label={label}
                     aria-current={active ? 'page' : undefined}
-                    class={`flex flex-col items-center gap-1 transition-all rounded-xl p-2 ${active ? 'text-teal-700 scale-105' : 'text-gray-500 hover:text-teal-600'}`}
+                    class={`flex flex-col items-center gap-1 transition-all p-2 rounded-xl ${active ? 'text-teal-700 scale-105' : 'text-gray-400 hover:text-teal-600'}`}
                 >
-                    <i class={`fas fa-${icon} text-xl`} aria-hidden="true"></i>
+                    <i class={`fas fa-${icon} text-lg`} aria-hidden="true"></i>
                     <span class={`text-[10px] font-bold uppercase ${active ? 'opacity-100' : 'opacity-60'}`}>{label}</span>
                 </button>
             );
@@ -131,86 +164,101 @@
                 const { data } = await supabase.from('posts').select('*, profiles(email)').order('created_at', { ascending: false });
                 setPosts(data || []);
             };
+
             useEffect(() => { fetchPosts(); }, []);
 
             const handleUpload = async (e) => {
                 e.preventDefault();
                 if (!file || !content) return alert("Please select a photo and write a caption.");
                 setUploading(true);
+                
                 const fileName = `${Date.now()}-${file.name}`;
                 const { error: upErr } = await supabase.storage.from('post-image').upload(fileName, file);
+                
                 if (upErr) { alert(upErr.message); setUploading(false); return; }
+
                 const { data: { publicUrl } } = supabase.storage.from('post-image').getPublicUrl(fileName);
-                const { error: postErr } = await supabase.from('posts').insert([{ user_id: user.id, content, image_url: publicUrl }]);
+                
+                const { error: postErr } = await supabase.from('posts').insert([{ 
+                    user_id: user.id, 
+                    content, 
+                    image_url: publicUrl 
+                }]);
+
                 if (!postErr) { setContent(''); setFile(null); fetchPosts(); }
                 setUploading(false);
             };
 
             return (
-                <section class="space-y-6 animate-fade-in" aria-label="Community Photo Feed">
-                    <div class="bg-white p-4 rounded-2xl border-2 border-teal-100 shadow-sm">
-                        <label for="post-caption" class="sr-only">Post Caption</label>
+                <div class="space-y-6 animate-fade-in">
+                    <div class="bg-white p-4 rounded-2xl border-2 border-teal-50 shadow-sm">
                         <textarea 
-                            id="post-caption"
+                            aria-label="Post caption"
                             placeholder="Share your Gardyn progress..." 
-                            class="w-full p-3 text-sm bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 mb-3 border border-slate-200" 
-                            value={content} onChange={e => setContent(e.target.value)} 
+                            class="w-full p-3 text-sm bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 mb-3 border border-slate-100" 
+                            value={content} 
+                            onChange={e => setContent(e.target.value)} 
                         />
                         <div class="flex items-center justify-between">
-                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold border border-teal-100 hover:bg-teal-100 focus-within:ring-2 focus-within:ring-teal-500">
-                                <i class="fas fa-camera mr-2" aria-hidden="true"></i>
-                                {file ? "✓ Photo Selected" : "Add Photo"}
-                                <input type="file" accept="image/*" class="sr-only" onChange={e => setFile(e.target.files[0])} aria-label="Upload post image" />
+                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold hover:bg-teal-100 focus-within:ring-2 focus-within:ring-teal-500">
+                                <i class="fas fa-camera mr-2"></i>
+                                {file ? "✓ Photo Ready" : "Add Photo"}
+                                <input type="file" accept="image/*" class="sr-only" onChange={e => setFile(e.target.files[0])} />
                             </label>
                             <button 
                                 onClick={handleUpload} 
                                 disabled={uploading} 
                                 class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-md disabled:bg-slate-300"
-                                aria-live="polite"
                             >
-                                {uploading ? 'Uploading...' : 'Share Update'}
+                                {uploading ? 'Posting...' : 'Share Update'}
                             </button>
                         </div>
                     </div>
+
                     {posts.map(post => (
                         <article key={post.id} class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden mb-6">
                             <div class="p-4 flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-xs" aria-hidden="true">
+                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-[10px]" aria-hidden="true">
                                     {post.profiles?.email ? post.profiles.email[0].toUpperCase() : 'T'}
                                 </div>
-                                <span class="text-xs font-bold text-gray-800">{post.profiles?.email.split('@')[0]}</span>
+                                <p class="text-xs font-bold text-gray-800">{post.profiles?.email.split('@')[0]}</p>
                             </div>
                             <img 
                                 src={post.image_url} 
-                                alt={`Gardyn post by ${post.profiles?.email.split('@')[0]}: ${post.content}`} 
+                                alt={`Gardyn update by teacher: ${post.content}`} 
                                 class="w-full h-64 object-cover bg-slate-100" 
                             />
-                            <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed font-medium">{post.content}</p></div>
+                            <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed">{post.content}</p></div>
                         </article>
                     ))}
-                </section>
+                </div>
             );
         }
 
         function LibraryView() {
             const [res, setRes] = useState([]);
             useEffect(() => { supabase.from('resources').select('*').then(({ data }) => setRes(data || [])); }, []);
+
             return (
-                <section class="space-y-4" aria-label="Resource Library">
+                <section class="space-y-4">
                     <h2 class="text-xl font-bold text-gray-900">Resource Hub</h2>
+                    {res.length === 0 && <p class="text-sm text-gray-400 italic">Links will appear here once added by Leads.</p>}
                     {res.map(r => (
                         <a 
-                            href={r.url} 
+                            href={formatUrl(r.url)} 
                             target="_blank" 
+                            rel="noopener noreferrer"
                             key={r.id} 
-                            class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-teal-400 transition focus:ring-2 focus:ring-teal-500"
-                            aria-label={`Download ${r.title}, Category ${r.category}`}
+                            class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-teal-400 transition focus:ring-2 focus:ring-teal-500 group"
                         >
-                            <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-lg flex items-center justify-center" aria-hidden="true"><i class="fas fa-file-lines"></i></div>
+                            <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-lg flex items-center justify-center group-hover:bg-teal-700 group-hover:text-white transition-colors">
+                                <i class="fas fa-file-lines"></i>
+                            </div>
                             <div class="flex-1 text-left">
                                 <p class="font-bold text-sm text-gray-900">{r.title}</p>
-                                <p class="text-[10px] text-gray-600 font-bold uppercase tracking-wide">{r.category}</p>
+                                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{r.category}</p>
                             </div>
+                            <i class="fas fa-external-link-alt text-xs text-slate-300"></i>
                         </a>
                     ))}
                 </section>
@@ -219,21 +267,68 @@
 
         function MessageView() {
             return (
-                <section class="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-200" aria-labelledby="support-heading">
-                    <h2 id="support-heading" class="text-xl font-bold text-emerald-900">Message the Leads</h2>
-                    <p class="text-sm text-emerald-800 mt-2 mb-6">Need help with yCubes or curriculum? We respond within 24 hours.</p>
+                <section class="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+                    <h2 class="text-xl font-bold text-emerald-900">Support Desk</h2>
+                    <p class="text-sm text-emerald-700 mt-2 mb-6 leading-relaxed">Questions about your yCubes or Kelby? Send a message to the project leads.</p>
                     <form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4">
-                        <div>
-                            <label for="full-name" class="block text-xs font-bold text-emerald-900 mb-1 uppercase">Full Name</label>
-                            <input id="full-name" name="name" placeholder="Enter your name" class="w-full p-3 rounded-xl border border-emerald-100 text-sm focus:ring-2 focus:ring-emerald-500" required />
-                        </div>
-                        <div>
-                            <label for="msg-body" class="block text-xs font-bold text-emerald-900 mb-1 uppercase">Your Question</label>
-                            <textarea id="msg-body" name="message" class="w-full p-4 rounded-2xl border border-emerald-100 h-32 text-sm focus:ring-2 focus:ring-emerald-500" placeholder="How can we help?" required></textarea>
-                        </div>
-                        <button class="w-full bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-emerald-800">Send Message</button>
+                        <input name="name" aria-label="Your name" placeholder="Full Name" class="w-full p-3 rounded-xl border-none text-sm shadow-inner" required />
+                        <textarea name="message" aria-label="Message" class="w-full p-4 rounded-2xl border-none h-32 text-sm shadow-inner" placeholder="How can we help?" required></textarea>
+                        <button class="w-full bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-emerald-800 transition">Send Message</button>
                     </form>
                 </section>
+            );
+        }
+
+        function AdminPanel() {
+            const [users, setUsers] = useState([]);
+            const [newRes, setNewRes] = useState({ title: '', category: 'General', type: 'PDF', url: '' });
+            
+            const refresh = () => supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []));
+            useEffect(() => refresh(), []);
+
+            const addRes = async (e) => {
+                e.preventDefault();
+                // Force URL protocol check during entry
+                const safeUrl = newRes.url.startsWith('http') ? newRes.url : `https://${newRes.url}`;
+                const { error } = await supabase.from('resources').insert([{ ...newRes, url: safeUrl }]);
+                if (error) alert(error.message);
+                else {
+                    setNewRes({ title: '', category: 'General', type: 'PDF', url: '' });
+                    alert("Added to Library!");
+                }
+            };
+
+            return (
+                <div class="space-y-8 animate-fade-in">
+                    <div class="bg-white p-5 rounded-2xl border-2 border-dashed border-teal-200">
+                        <h3 class="font-bold text-sm mb-4 text-teal-800 uppercase tracking-widest">Post Library Resource</h3>
+                        <form onSubmit={addRes} class="space-y-3">
+                            <input aria-label="Resource title" placeholder="Title (e.g. Planting Guide)" class="w-full p-2 bg-slate-50 rounded border" value={newRes.title} onChange={e => setNewRes({...newRes, title: e.target.value})} required />
+                            <input aria-label="Resource URL" placeholder="Link URL (e.g. drive.google.com/...)" class="w-full p-2 bg-slate-50 rounded border" value={newRes.url} onChange={e => setNewRes({...newRes, url: e.target.value})} required />
+                            <button class="w-full bg-teal-700 text-white py-2 rounded-lg font-bold text-xs">Add to Hub</button>
+                        </form>
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <h3 class="font-bold text-xs text-gray-500 uppercase tracking-widest pl-1">Teacher Management</h3>
+                        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y">
+                            {users.map(u => (
+                                <div key={u.id} class="flex items-center justify-between p-4">
+                                    <span class="text-xs font-bold text-gray-700 truncate w-40">{u.email}</span>
+                                    <select 
+                                        aria-label="Change user role"
+                                        value={u.role} 
+                                        onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refresh(); }}
+                                        class="text-[10px] border rounded p-1 font-bold text-teal-700 focus:ring-2 focus:ring-teal-500"
+                                    >
+                                        <option value="teacher">TEACHER</option>
+                                        <option value="admin">LEAD</option>
+                                    </select>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
             );
         }
 
@@ -251,42 +346,37 @@
             };
 
             const handleForgot = async () => {
-                if (!email) return alert("Please enter your email first.");
-                const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
+                if (!email) return alert("Please type your email address first.");
+                const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: window.location.href, 
+                });
                 if (error) alert(error.message);
-                else alert("Reset link sent! Check your Gmail inbox.");
+                else alert("Reset link sent to your Gmail!");
             };
 
             return (
-                <main class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
+                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
                     <i class="fas fa-seedling text-5xl mb-6 text-teal-300" aria-hidden="true"></i>
                     <h1 class="text-3xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
                     <form onSubmit={handleAuth} class="w-full max-w-xs space-y-4">
-                        <div>
-                            <label for="auth-email" class="sr-only">Email Address</label>
-                            <input id="auth-email" type="email" placeholder="Email Address" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setEmail(e.target.value)} required />
-                        </div>
-                        <div>
-                            <label for="auth-password" class="sr-only">Password</label>
-                            <input id="auth-password" type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setPassword(e.target.value)} required />
-                        </div>
+                        <input type="email" aria-label="Email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setEmail(e.target.value)} required />
+                        <input type="password" aria-label="Password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setPassword(e.target.value)} required />
                         <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl hover:bg-teal-400 transition active:scale-95">
                             {mode === 'login' ? 'Login' : 'Join Project'}
                         </button>
                     </form>
-                    <div class="mt-8 flex flex-col items-center gap-4">
-                        <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="text-sm underline decoration-teal-400 underline-offset-4">
-                            {mode === 'login' ? "New educator? Create an account" : "Already have an account? Login"}
+                    <div class="mt-8 flex flex-col gap-4 items-center">
+                        <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="text-xs underline decoration-teal-400 underline-offset-4">
+                            {mode === 'login' ? "New educator? Create an account" : "Back to Login"}
                         </button>
-                        <button onClick={handleForgot} class="text-xs uppercase tracking-widest font-bold opacity-70 hover:opacity-100">
+                        <button onClick={handleForgot} class="text-[10px] uppercase tracking-widest font-bold opacity-60 hover:opacity-100">
                             Forgot Password?
                         </button>
                     </div>
-                </main>
+                </div>
             );
         }
 
-        // --- PASSWORD RESET SCREEN ---
         function PasswordUpdateScreen({ setRecoveryMode }) {
             const [newPass, setNewPass] = useState('');
             const handleUpdate = async (e) => {
@@ -294,61 +384,17 @@
                 const { error } = await supabase.auth.updateUser({ password: newPass });
                 if (error) alert(error.message);
                 else {
-                    alert("Password updated! Logging you in.");
+                    alert("Password updated successfully!");
                     setRecoveryMode(false);
                 }
             };
             return (
-                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white" role="alert">
-                    <h2 class="text-2xl font-bold mb-6">Create New Password</h2>
+                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
+                    <h2 class="text-2xl font-bold mb-6 italic uppercase">Create New Password</h2>
                     <form onSubmit={handleUpdate} class="w-full max-w-xs space-y-4">
-                        <label for="new-password" class="sr-only">New Password</label>
-                        <input id="new-password" type="password" placeholder="New Password" class="w-full p-4 rounded-2xl text-gray-900" onChange={e => setNewPass(e.target.value)} required />
-                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold">Update Password</button>
+                        <input type="password" placeholder="New Password" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setNewPass(e.target.value)} required />
+                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl">Save & Login</button>
                     </form>
-                </div>
-            );
-        }
-
-        function AdminPanel() {
-            const [users, setUsers] = useState([]);
-            const [newRes, setNewRes] = useState({ title: '', category: 'General', type: 'PDF', url: '' });
-            const refresh = () => supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []));
-            useEffect(() => refresh(), []);
-            const addRes = async (e) => {
-                e.preventDefault();
-                await supabase.from('resources').insert([newRes]);
-                setNewRes({ title: '', category: 'General', type: 'PDF', url: '' });
-                alert("Added to Library!");
-            };
-            return (
-                <div class="space-y-8 animate-fade-in" aria-label="Lead Administration">
-                    <div class="bg-white p-5 rounded-2xl border border-dashed border-teal-300 shadow-sm">
-                        <h3 class="font-bold text-sm mb-4 text-teal-800 uppercase tracking-widest">Post Library Link</h3>
-                        <form onSubmit={addRes} class="space-y-3">
-                            <input aria-label="Resource Title" placeholder="Resource Title (e.g. Setup Guide)" class="w-full p-2 bg-slate-50 rounded text-sm border" value={newRes.title} onChange={e => setNewRes({...newRes, title: e.target.value})} required />
-                            <input aria-label="Resource URL" placeholder="URL (Google Drive Link)" class="w-full p-2 bg-slate-50 rounded text-sm border" value={newRes.url} onChange={e => setNewRes({...newRes, url: e.target.value})} required />
-                            <button class="w-full bg-teal-700 text-white py-2 rounded-lg font-bold text-xs">Publish to Hub</button>
-                        </form>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-xs text-gray-600 uppercase tracking-widest mb-3 px-1">Manage Teachers</h3>
-                        <div class="bg-white border border-slate-200 rounded-xl divide-y">
-                            {users.map(u => (
-                                <div key={u.id} class="flex items-center justify-between p-4">
-                                    <span class="text-xs font-bold text-gray-700">{u.email}</span>
-                                    <select 
-                                        aria-label={`Change role for ${u.email}`}
-                                        value={u.role} 
-                                        onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refresh(); }}
-                                        class="text-[10px] border border-slate-300 rounded p-1 font-bold text-teal-700 focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="teacher">TEACHER</option><option value="admin">LEAD</option>
-                                    </select>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 </div>
             );
         }
