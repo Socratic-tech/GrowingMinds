@@ -78,20 +78,20 @@
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 text-xl">{profile?.role === 'admin' ? '👑' : '🧑‍🏫'}</div>
                             <div>
-                                <p class="text-xs text-teal-100 font-medium">Educator Portal</p>
+                                <p class="text-xs text-teal-100 font-medium italic">Educator Portal</p>
                                 <p class="font-bold text-lg leading-tight truncate w-40">{user.email.split('@')[0]}</p>
                             </div>
                         </div>
                     </header>
 
-                    <main class="flex-1 p-5 overflow-y-auto custom-scroll">
+                    <main class="flex-1 p-5 overflow-y-auto custom-scroll" role="main">
                         {activeTab === 'feed' && <CommunityFeed user={user} />}
                         {activeTab === 'library' && <LibraryView />}
                         {activeTab === 'messages' && <MessageView />}
                         {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel />}
                     </main>
 
-                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg">
+                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg" aria-label="Main menu">
                         <NavBtn icon="house" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
                         <NavBtn icon="book-bookmark" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
                         <NavBtn icon="comment-dots" label="Support" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
@@ -116,10 +116,20 @@
             const [file, setFile] = useState(null);
             const [uploading, setUploading] = useState(false);
 
+            // SIMPLIFIED FETCH: Removed the 'profiles(email)' join to prevent errors
             const fetchPosts = async () => {
-                const { data } = await supabase.from('posts').select('*, profiles(email)').order('created_at', { ascending: false });
+                const { data, error } = await supabase
+                    .from('posts')
+                    .select('*') 
+                    .order('created_at', { ascending: false });
+                
+                if (error) {
+                    console.error("DEBUG FEED ERROR:", error.message);
+                    alert("Feed Error: " + error.message);
+                }
                 setPosts(data || []);
             };
+
             useEffect(() => { fetchPosts(); }, []);
 
             const handleUpload = async (e) => {
@@ -148,11 +158,12 @@
                             </button>
                         </div>
                     </div>
+                    {posts.length === 0 && <div class="text-center py-10 text-gray-400 italic text-sm">No updates yet. Be the first to post!</div>}
                     {posts.map(post => (
                         <article key={post.id} class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden mb-6">
                             <div class="p-4 flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-[10px]">{post.profiles?.email?.[0].toUpperCase()}</div>
-                                <p class="text-xs font-bold text-gray-800">{post.profiles?.email.split('@')[0]}</p>
+                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-[10px]">GM</div>
+                                <p class="text-xs font-bold text-gray-800 uppercase tracking-tighter">Educator Update</p>
                             </div>
                             <img src={post.image_url} alt={post.content} class="w-full h-64 object-cover bg-slate-50" />
                             <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed font-medium">{post.content}</p></div>
@@ -203,7 +214,7 @@
             
             const refreshData = async () => {
                 const { data: u } = await supabase.from('profiles').select('*');
-                const { data: p } = await supabase.from('posts').select('*, profiles(email)').order('created_at', { ascending: false });
+                const { data: p } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
                 setUsers(u || []);
                 setPosts(p || []);
             };
@@ -244,7 +255,6 @@
                                     <div class="flex items-center gap-3">
                                         <img src={p.image_url} class="w-10 h-10 rounded object-cover border" />
                                         <div class="overflow-hidden">
-                                            <p class="text-[10px] font-bold text-gray-800 truncate w-32">{p.profiles?.email}</p>
                                             <p class="text-[9px] text-gray-400 truncate w-32">{p.content}</p>
                                         </div>
                                     </div>
@@ -260,7 +270,7 @@
                             {users.map(u => (
                                 <div key={u.id} class="flex items-center justify-between p-4">
                                     <span class="text-[10px] font-bold text-gray-700 truncate w-40">{u.email}</span>
-                                    <select value={u.role} onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refreshData(); }} class="text-[10px] border rounded p-1 font-bold text-teal-700">
+                                    <select value={u.role} onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refreshData(); }} class="text-[10px] border rounded p-1 font-bold text-teal-700 focus:ring-2 focus:ring-teal-500">
                                         <option value="teacher">TEACHER</option><option value="admin">LEAD</option>
                                     </select>
                                 </div>
