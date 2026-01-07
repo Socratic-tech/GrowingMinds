@@ -11,14 +11,20 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        .custom-scroll::-webkit-scrollbar { display: none; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-slate-50 font-sans">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- SUPABASE CONFIG ---
+        // --- SUPABASE CONFIGURATION ---
         const SUPABASE_URL = 'https://aaiovfryjlcdijdyknik.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT';
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -29,7 +35,6 @@
             const [activeTab, setActiveTab] = useState('feed');
             const [loading, setLoading] = useState(true);
 
-            // Auth State Listener
             useEffect(() => {
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     if (session) fetchProfile(session.user);
@@ -45,135 +50,233 @@
             }, []);
 
             async function fetchProfile(authUser) {
-                const { data } = await supabase.from('profiles').select('*').eq('id', authUser.uid).single();
+                let { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
+                
+                // Auto-create profile if missing
+                if (!data) {
+                    const { data: newP } = await supabase.from('profiles').insert([{ 
+                        id: authUser.id, 
+                        email: authUser.email, 
+                        role: 'teacher' 
+                    }]).select().single();
+                    data = newP;
+                }
+                
                 setUser(authUser);
-                setProfile(data || { role: 'teacher' });
+                setProfile(data);
                 setLoading(false);
             }
 
-            if (loading) return <div class="h-screen flex items-center justify-center text-teal-600"><i class="fas fa-circle-notch animate-spin text-4xl"></i></div>;
-
-            if (!user) return <AuthScreen supabase={supabase} />;
+            if (loading) return <div class="h-screen flex items-center justify-center text-teal-600"><i class="fas fa-seedling animate-bounce text-5xl"></i></div>;
+            if (!user) return <AuthScreen />;
 
             return (
-                <div class="max-w-md mx-auto min-h-screen pb-20 bg-white relative shadow-xl">
-                    {/* Teal Gradient Header */}
-                    <header class="bg-gradient-to-r from-teal-600 to-emerald-600 p-6 text-white rounded-b-3xl">
-                        <div class="flex justify-between items-center">
-                            <h1 class="text-xl font-bold tracking-tight"><i class="fas fa-seedling mr-2"></i>Growing Minds</h1>
-                            <button onClick={() => supabase.auth.signOut()} class="text-xs bg-white/20 px-3 py-1 rounded-full">Logout</button>
+                <div class="max-w-md mx-auto min-h-screen pb-24 bg-white relative shadow-2xl flex flex-col">
+                    {/* Header */}
+                    <header class="bg-gradient-to-br from-teal-600 to-emerald-700 p-6 text-white rounded-b-[2.5rem] shadow-lg">
+                        <div class="flex justify-between items-center mb-6">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-leaf text-teal-300"></i>
+                                <h1 class="text-xl font-black italic uppercase tracking-tight">Growing Minds</h1>
+                            </div>
+                            <button onClick={() => supabase.auth.signOut()} class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20">Sign Out</button>
                         </div>
-                        <p class="text-teal-100 text-sm mt-2">Welcome, {user.email}</p>
-                        {profile?.role === 'admin' && <span class="text-[10px] bg-yellow-400 text-teal-900 px-2 py-0.5 rounded-full font-bold uppercase mt-1 inline-block">Project Lead</span>}
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 text-xl">
+                                {profile?.role === 'admin' ? '👑' : '🧑‍🏫'}
+                            </div>
+                            <div class="overflow-hidden">
+                                <p class="text-xs text-teal-100 font-medium">Educator Portal</p>
+                                <p class="font-bold text-lg leading-tight truncate">{user.email}</p>
+                            </div>
+                        </div>
                     </header>
 
-                    <main class="p-4">
-                        {activeTab === 'feed' && <CommunityFeed />}
-                        {activeTab === 'library' && <ResourceLibrary supabase={supabase} />}
-                        {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel supabase={supabase} />}
+                    <main class="flex-1 p-5 overflow-y-auto custom-scroll">
+                        {activeTab === 'feed' && <CommunityFeed user={user} />}
+                        {activeTab === 'library' && <LibraryView />}
+                        {activeTab === 'messages' && <MessageView />}
+                        {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel />}
                     </main>
 
-                    {/* Navigation Bar */}
-                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around py-4 shadow-lg">
-                        <NavBtn icon="home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
-                        <NavBtn icon="book" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
-                        {profile?.role === 'admin' && <NavBtn icon="user-shield" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
+                    {/* Navigation */}
+                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg">
+                        <NavBtn icon="house" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
+                        <NavBtn icon="book-bookmark" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
+                        <NavBtn icon="comment-dots" label="Leads" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
+                        {profile?.role === 'admin' && <NavBtn icon="shield-halved" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
                     </nav>
                 </div>
             );
         }
 
-        // --- Component: Resource Library ---
-        function ResourceLibrary({ supabase }) {
-            const [docs, setDocs] = useState([]);
-            useEffect(() => {
-                supabase.from('resources').select('*').then(({ data }) => setDocs(data || []));
-            }, []);
+        function CommunityFeed({ user }) {
+            const [posts, setPosts] = useState([]);
+            const [content, setContent] = useState('');
+            const [file, setFile] = useState(null);
+            const [uploading, setUploading] = useState(false);
+
+            const fetchPosts = async () => {
+                const { data } = await supabase.from('posts').select('*, profiles(email)').order('created_at', { ascending: false });
+                setPosts(data || []);
+            };
+            useEffect(() => { fetchPosts(); }, []);
+
+            const handleUpload = async (e) => {
+                e.preventDefault();
+                if (!file || !content) return alert("Add a photo and caption!");
+                setUploading(true);
+                
+                const fileName = `${Date.now()}-${file.name}`;
+                // Using your specific bucket name: post-image
+                const { error: upErr } = await supabase.storage.from('post-image').upload(fileName, file);
+                if (upErr) { alert(upErr.message); setUploading(false); return; }
+
+                const { data: { publicUrl } } = supabase.storage.from('post-image').getPublicUrl(fileName);
+                
+                const { error: postErr } = await supabase.from('posts').insert([{ user_id: user.id, content, image_url: publicUrl }]);
+                if (!postErr) { setContent(''); setFile(null); fetchPosts(); }
+                setUploading(false);
+            };
 
             return (
-                <div class="space-y-4">
-                    <h2 class="font-bold text-gray-800">Resource Library</h2>
-                    {docs.length === 0 && <p class="text-sm text-gray-400">No resources shared yet.</p>}
-                    {docs.map(res => (
-                        <div key={res.id} class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border">
-                            <i class="fas fa-file-pdf text-teal-600 text-xl"></i>
-                            <div class="flex-1">
-                                <p class="font-bold text-sm text-gray-800">{res.title}</p>
-                                <p class="text-[10px] text-gray-500 uppercase">{res.category}</p>
+                <div class="space-y-6 animate-fade-in">
+                    <div class="bg-white p-4 rounded-2xl border-2 border-teal-50">
+                        <textarea placeholder="Share your Gardyn progress..." class="w-full p-3 text-sm bg-slate-50 rounded-xl outline-none mb-3" value={content} onChange={e => setContent(e.target.value)} />
+                        <div class="flex items-center justify-between">
+                            <label class="cursor-pointer bg-teal-50 text-teal-700 px-4 py-2 rounded-xl text-xs font-bold">
+                                {file ? "✓ Photo Selected" : "+ Add Photo"}
+                                <input type="file" accept="image/*" class="hidden" onChange={e => setFile(e.target.files[0])} />
+                            </label>
+                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-600 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-md">
+                                {uploading ? 'Posting...' : 'Share Update'}
+                            </button>
+                        </div>
+                    </div>
+                    {posts.map(post => (
+                        <div key={post.id} class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                            <div class="p-4 flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600 font-bold text-[10px] uppercase">
+                                    {post.profiles?.email ? post.profiles.email[0] : 'T'}
+                                </div>
+                                <p class="text-xs font-bold text-gray-800 truncate w-40">{post.profiles?.email.split('@')[0]}</p>
                             </div>
-                            <a href={res.url} target="_blank" class="text-teal-600 text-xs font-bold">Open</a>
+                            <img src={post.image_url} class="w-full h-64 object-cover" />
+                            <div class="p-4"><p class="text-sm text-gray-600 leading-relaxed">{post.content}</p></div>
                         </div>
                     ))}
                 </div>
             );
         }
 
-        // --- Component: Admin Panel ---
-        function AdminPanel({ supabase }) {
-            const [users, setUsers] = useState([]);
-            useEffect(() => {
-                supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []));
-            }, []);
-
+        function LibraryView() {
+            const [res, setRes] = useState([]);
+            useEffect(() => { supabase.from('resources').select('*').then(({ data }) => setRes(data || [])); }, []);
             return (
                 <div class="space-y-4">
-                    <h2 class="font-bold text-gray-800 underline decoration-teal-500">Lead Dashboard</h2>
-                    <div class="bg-white border rounded-xl overflow-hidden">
-                        {users.map(u => (
-                            <div key={u.id} class="p-3 border-b flex justify-between items-center text-sm">
-                                <span>{u.email || 'Teacher'}</span>
-                                <select 
-                                    value={u.role} 
-                                    onChange={async (e) => {
-                                        await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id);
-                                        window.location.reload();
-                                    }}
-                                    class="text-xs border rounded p-1"
-                                >
-                                    <option value="teacher">Teacher</option>
-                                    <option value="admin">Lead</option>
-                                </select>
-                            </div>
-                        ))}
+                    <h2 class="text-xl font-bold text-gray-800">Resource Hub</h2>
+                    {res.length === 0 && <p class="text-xs text-gray-400 italic">No resources added yet by the Lead team.</p>}
+                    {res.map(r => (
+                        <a href={r.url} target="_blank" key={r.id} class="flex items-center gap-4 p-4 bg-white rounded-2xl border shadow-sm hover:border-teal-200 transition">
+                            <div class="w-10 h-10 bg-teal-50 text-teal-600 rounded-lg flex items-center justify-center"><i class="fas fa-file-lines"></i></div>
+                            <div class="flex-1 text-left"><p class="font-bold text-sm text-gray-800">{r.title}</p><p class="text-[10px] text-gray-400 font-bold uppercase">{r.category}</p></div>
+                        </a>
+                    ))}
+                </div>
+            );
+        }
+
+        function MessageView() {
+            return (
+                <div class="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+                    <h2 class="text-xl font-bold text-emerald-900">Message the Leads</h2>
+                    <p class="text-sm text-emerald-700 mt-2 mb-6 leading-relaxed">Questions about your yCubes, Kelby AI, or lesson plans? We're here to help.</p>
+                    <form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-3">
+                        <input name="name" placeholder="Full Name" class="w-full p-3 rounded-xl border-none text-sm" required />
+                        <textarea name="message" class="w-full p-4 rounded-2xl border-none h-32 text-sm" placeholder="Tell us what you need..." required></textarea>
+                        <button class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-emerald-100">Send Message</button>
+                    </form>
+                </div>
+            );
+        }
+
+        function AdminPanel() {
+            const [users, setUsers] = useState([]);
+            const [newRes, setNewRes] = useState({ title: '', category: 'General', type: 'PDF', url: '' });
+            const refresh = () => supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []));
+            useEffect(() => refresh(), []);
+
+            const addRes = async (e) => {
+                e.preventDefault();
+                await supabase.from('resources').insert([newRes]);
+                setNewRes({ title: '', category: 'General', type: 'PDF', url: '' });
+                alert("Resource added!");
+            };
+
+            return (
+                <div class="space-y-8 animate-fade-in">
+                    <div class="bg-white p-5 rounded-2xl border border-dashed border-teal-200 shadow-sm">
+                        <h3 class="font-bold text-sm mb-4 text-teal-800 italic uppercase tracking-wider">Add Hub Resource</h3>
+                        <form onSubmit={addRes} class="space-y-2">
+                            <input placeholder="Document Title" class="w-full p-2 bg-gray-50 rounded text-sm border" value={newRes.title} onChange={e => setNewRes({...newRes, title: e.target.value})} required />
+                            <input placeholder="URL (Google Drive, Video, etc)" class="w-full p-2 bg-gray-50 rounded text-sm border" value={newRes.url} onChange={e => setNewRes({...newRes, url: e.target.value})} required />
+                            <button class="w-full bg-teal-600 text-white py-2 rounded-lg font-bold text-xs">Add to Hub</button>
+                        </form>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="font-bold text-sm text-gray-400 uppercase tracking-widest pl-1">Teacher Management</h3>
+                        <div class="bg-white border rounded-xl overflow-hidden divide-y">
+                            {users.map(u => (
+                                <div key={u.id} class="flex items-center justify-between p-4">
+                                    <span class="text-[10px] font-bold truncate max-w-[140px] text-gray-700">{u.email}</span>
+                                    <select 
+                                        value={u.role} 
+                                        onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refresh(); }}
+                                        class={`text-[10px] border rounded p-1 font-bold ${u.role === 'admin' ? 'text-teal-600' : 'text-gray-400'}`}
+                                    >
+                                        <option value="teacher">TEACHER</option>
+                                        <option value="admin">LEAD</option>
+                                    </select>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             );
         }
 
-        function NavBtn({ icon, active, onClick }) {
+        function NavBtn({ icon, label, active, onClick }) {
             return (
-                <button onClick={onClick} class={`text-xl ${active ? 'text-teal-600' : 'text-gray-300'}`}>
-                    <i class={`fas fa-${icon}`}></i>
+                <button onClick={onClick} class={`flex flex-col items-center gap-1 transition-all ${active ? 'text-teal-600 scale-110' : 'text-gray-300'}`}>
+                    <i class={`fas fa-${icon} text-lg`}></i>
+                    <span class={`text-[9px] font-bold uppercase ${active ? 'opacity-100' : 'opacity-0'}`}>{label}</span>
                 </button>
             );
         }
 
-        function AuthScreen({ supabase }) {
+        function AuthScreen() {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
-            const handleAuth = async (type) => {
-                const { error } = type === 'login' 
-                    ? await supabase.auth.signInWithPassword({ email, password })
+            const [mode, setMode] = useState('login');
+            const handle = async (e) => {
+                e.preventDefault();
+                const { error } = mode === 'login' 
+                    ? await supabase.auth.signInWithPassword({ email, password }) 
                     : await supabase.auth.signUp({ email, password });
                 if (error) alert(error.message);
             };
             return (
-                <div class="flex flex-col items-center justify-center min-h-screen bg-teal-900 text-white p-10 text-center">
-                    <i class="fas fa-leaf text-5xl mb-4 text-teal-400"></i>
-                    <h1 class="text-2xl font-bold mb-8 italic">Growing Minds</h1>
-                    <input type="email" placeholder="School Email" class="w-full p-3 rounded-lg mb-3 text-gray-900" onChange={e => setEmail(e.target.value)} />
-                    <input type="password" placeholder="Password" class="w-full p-3 rounded-lg mb-6 text-gray-900" onChange={e => setPassword(e.target.value)} />
-                    <button onClick={() => handleAuth('login')} class="w-full bg-teal-500 py-3 rounded-lg font-bold mb-3">Login</button>
-                    <button onClick={() => handleAuth('signup')} class="w-full border border-teal-500 py-3 rounded-lg font-bold">Register</button>
-                </div>
-            );
-        }
-
-        function CommunityFeed() {
-            return (
-                <div class="text-center py-10">
-                    <i class="fas fa-images text-4xl text-gray-200 mb-2"></i>
-                    <p class="text-gray-500 text-sm">Welcome to the community!<br/>Project posts will appear here.</p>
+                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
+                    <i class="fas fa-seedling text-5xl mb-6 text-teal-300"></i>
+                    <h1 class="text-2xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
+                    <form onSubmit={handle} class="w-full max-w-xs space-y-3">
+                        <input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setEmail(e.target.value)} required />
+                        <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setPassword(e.target.value)} required />
+                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl transition active:scale-95">{mode === 'login' ? 'Login' : 'Join Project'}</button>
+                    </form>
+                    <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-8 text-xs underline opacity-60">
+                        {mode === 'login' ? "New educator? Create an account" : "Already have an account? Login"}
+                    </button>
                 </div>
             );
         }
@@ -181,7 +284,5 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-</body>
-</html>
 </body>
 </html>
