@@ -4,27 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Growing Minds | Educator Portal</title>
-    
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
-    <style>
-        .custom-scroll::-webkit-scrollbar { display: none; }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
 </head>
 <body class="bg-slate-50 font-sans text-gray-900">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-
-        // --- SUPABASE CONFIG ---
         const SUPABASE_URL = 'https://aaiovfryjlcdijdyknik.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT';
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -35,58 +26,54 @@
             const [activeTab, setActiveTab] = useState('feed');
             const [loading, setLoading] = useState(true);
 
+            const fetchProfile = async (authUser) => {
+                try {
+                    // Try to get existing profile
+                    let { data, error } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', authUser.id)
+                        .single();
+
+                    if (error && error.code !== 'PGRST116') throw error;
+
+                    // If no profile, create one
+                    if (!data) {
+                        const { data: newP, error: insErr } = await supabase
+                            .from('profiles')
+                            .insert([{ id: authUser.id, email: authUser.email, role: 'teacher', is_approved: false }])
+                            .select()
+                            .single();
+                        if (insErr) throw insErr;
+                        data = newP;
+                    }
+
+                    setProfile(data);
+                    setUser(authUser);
+                } catch (err) {
+                    console.error("Profile Fetch Error:", err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
             useEffect(() => {
-                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
                     if (session) fetchProfile(session.user);
                     else { setUser(null); setProfile(null); setLoading(false); }
                 });
                 return () => subscription.unsubscribe();
             }, []);
 
-            async function fetchProfile(authUser) {
-                let { data, error } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
-                
-                // If profile doesn't exist yet, create it
-                if (!data) {
-                    const { data: newP } = await supabase.from('profiles').insert([
-                        { id: authUser.id, email: authUser.email, role: 'teacher', is_approved: false }
-                    ]).select().single();
-                    data = newP;
-                }
-                
-                setUser(authUser);
-                setProfile(data);
-                setLoading(false);
-            }
-
             if (loading) return <div class="h-screen flex items-center justify-center text-teal-600"><i class="fas fa-seedling animate-bounce text-5xl"></i></div>;
             if (!user) return <AuthScreen />;
-            
-            // --- THE GATEKEEPER SCREEN ---
-            if (profile && !profile.is_approved) {
-                return (
-                    <div class="h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center animate-fade-in">
-                        <div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-6">
-                            <i class="fas fa-user-clock"></i>
-                        </div>
-                        <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tighter mb-2">Account Pending</h2>
-                        <p class="text-sm text-slate-500 leading-relaxed mb-8 italic">
-                            Hi {user.email.split('@')[0]}, your account is waiting for admin approval. 
-                            You'll get access to the feed and library once verified.
-                        </p>
-                        <button onClick={() => supabase.auth.signOut()} class="text-teal-700 font-bold text-sm underline uppercase tracking-widest">Sign Out</button>
-                    </div>
-                );
-            }
+            if (profile && !profile.is_approved) return <PendingScreen email={user.email} />;
 
             return (
                 <div class="max-w-md mx-auto min-h-screen pb-24 bg-white relative shadow-2xl flex flex-col">
                     <header class="bg-gradient-to-br from-teal-700 to-emerald-800 p-6 text-white rounded-b-[2.5rem] shadow-lg">
                         <div class="flex justify-between items-center mb-6">
-                            <div class="flex items-center gap-2">
-                                <i class="fas fa-leaf text-teal-300"></i>
-                                <span class="text-xl font-black italic uppercase tracking-tight">Growing Minds</span>
-                            </div>
+                            <span class="text-xl font-black italic uppercase tracking-tight">Growing Minds</span>
                             <button onClick={() => supabase.auth.signOut()} class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20 font-bold">LOGOUT</button>
                         </div>
                         <div class="flex items-center gap-4">
@@ -94,13 +81,13 @@
                                 {profile?.role === 'admin' ? '👑' : '🧑‍🏫'}
                             </div>
                             <div>
-                                <p class="text-xs text-teal-100 font-medium italic">Verified Educator</p>
+                                <p class="text-xs text-teal-100 font-medium italic">{profile?.role === 'admin' ? 'Project Lead' : 'Verified Educator'}</p>
                                 <p class="font-bold text-lg leading-tight truncate w-40">{user.email.split('@')[0]}</p>
                             </div>
                         </div>
                     </header>
 
-                    <main class="flex-1 p-5 overflow-y-auto custom-scroll">
+                    <main class="flex-1 p-5 overflow-y-auto">
                         {activeTab === 'feed' && <CommunityFeed user={user} />}
                         {activeTab === 'library' && <LibraryView />}
                         {activeTab === 'messages' && <MessageView />}
@@ -121,8 +108,19 @@
             return (
                 <button onClick={onClick} class={`flex flex-col items-center gap-1 p-2 transition-all ${active ? 'text-teal-700 scale-105' : 'text-gray-400'}`}>
                     <i class={`fas fa-${icon} text-lg`}></i>
-                    <span class="text-[10px] font-bold uppercase tracking-tighter">{label}</span>
+                    <span class="text-[10px] font-bold uppercase">{label}</span>
                 </button>
+            );
+        }
+
+        function PendingScreen({ email }) {
+            return (
+                <div class="h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center">
+                    <div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-6"><i class="fas fa-user-clock"></i></div>
+                    <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tighter mb-2">Access Pending</h2>
+                    <p class="text-sm text-slate-500 leading-relaxed mb-8">Hi {email.split('@')[0]}, your account is waiting for approval.</p>
+                    <button onClick={() => supabase.auth.signOut()} class="text-teal-700 font-bold text-sm underline">Sign Out</button>
+                </div>
             );
         }
 
@@ -143,65 +141,46 @@
                 e.preventDefault();
                 if (!file || !content) return alert("Photo and caption required.");
                 setUploading(true);
-
                 try {
-                    // --- COMPRESSION LOGIC ---
-                    const compressedFile = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.readAsDataURL(file);
-                        reader.onload = (event) => {
-                            const img = new Image();
-                            img.src = event.target.result;
-                            img.onload = () => {
-                                const canvas = document.createElement('canvas');
-                                const MAX_WIDTH = 1200;
-                                canvas.width = MAX_WIDTH;
-                                canvas.height = img.height * (MAX_WIDTH / img.width);
-                                const ctx = canvas.getContext('2d');
-                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                                canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.7);
-                            };
-                        };
-                    });
-
-                    const fileName = `${Date.now()}-${file.name}`;
-                    await supabase.storage.from('post-image').upload(fileName, compressedFile);
+                    const canvas = document.createElement('canvas');
+                    const img = new Image();
+                    img.src = URL.createObjectURL(file);
+                    await new Promise(r => img.onload = r);
+                    const MAX = 1200;
+                    canvas.width = MAX;
+                    canvas.height = img.height * (MAX / img.width);
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7));
+                    
+                    const fileName = `${Date.now()}.jpg`;
+                    await supabase.storage.from('post-image').upload(fileName, blob);
                     const { data: { publicUrl } } = supabase.storage.from('post-image').getPublicUrl(fileName);
                     await supabase.from('posts').insert([{ user_id: user.id, content, image_url: publicUrl }]);
-                    
                     setContent(''); setFile(null); fetchPosts();
                 } catch (err) { alert("Upload failed."); }
                 setUploading(false);
             };
 
             return (
-                <div class="space-y-6 animate-fade-in">
+                <div class="space-y-6">
                     <div class="bg-white p-4 rounded-2xl border-2 border-teal-50 shadow-sm">
-                        <textarea placeholder="Share your classroom garden update..." class="w-full p-3 text-sm bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 mb-3 resize-none" rows="3" value={content} onChange={e => setContent(e.target.value)} />
+                        <textarea placeholder="Share an update..." class="w-full p-3 text-sm bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 mb-3" value={content} onChange={e => setContent(e.target.value)} />
                         <div class="flex items-center justify-between">
-                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold hover:bg-teal-100 transition-colors">
-                                <i class="fas fa-camera mr-2"></i>{file ? "✓ Photo Added" : "Add Photo"}
+                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold">
+                                <i class="fas fa-camera mr-2"></i>{file ? "Ready" : "Photo"}
                                 <input type="file" accept="image/*" class="sr-only" onChange={e => setFile(e.target.files[0])} />
                             </label>
-                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold disabled:bg-slate-300">
-                                {uploading ? 'Posting...' : 'Share Update'}
-                            </button>
+                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold">Post</button>
                         </div>
                     </div>
-
                     {posts.map(post => (
                         <article key={post.id} class="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm mb-6">
-                            <div class="p-4 flex items-center justify-between">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-bold">
-                                        {post.profiles?.email?.[0].toUpperCase()}
-                                    </div>
-                                    <p class="text-xs font-bold text-gray-800">{post.profiles?.email.split('@')[0]}</p>
-                                </div>
-                                <span class="text-[9px] text-gray-400 font-bold">{new Date(post.created_at).toLocaleDateString()}</span>
+                            <div class="p-4 flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-bold">{post.profiles?.email?.[0].toUpperCase()}</div>
+                                <p class="text-xs font-bold">{post.profiles?.email.split('@')[0]}</p>
                             </div>
-                            <img src={post.image_url} class="w-full h-72 object-cover bg-slate-100" />
-                            <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed font-medium">{post.content}</p></div>
+                            <img src={post.image_url} class="w-full h-64 object-cover" />
+                            <div class="p-4 text-sm text-gray-700">{post.content}</div>
                         </article>
                     ))}
                 </div>
@@ -212,29 +191,28 @@
             const [res, setRes] = useState([]);
             useEffect(() => { supabase.from('resources').select('*').then(({ data }) => setRes(data || [])); }, []);
             return (
-                <section class="space-y-4 animate-fade-in">
-                    <h2 class="text-xl font-bold px-1">Resource Hub</h2>
+                <div class="space-y-4">
+                    <h2 class="text-xl font-bold px-1">Library</h2>
                     {res.map(r => (
-                        <a href={r.url} target="_blank" key={r.id} class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-teal-400 transition-all">
-                            <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-lg flex items-center justify-center"><i class="fas fa-file-alt"></i></div>
-                            <div class="flex-1"><p class="font-bold text-sm">{r.title}</p><p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{r.category}</p></div>
+                        <a href={r.url} target="_blank" key={r.id} class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200">
+                            <i class="fas fa-file-pdf text-teal-600"></i>
+                            <div class="text-sm font-bold">{r.title}</div>
                         </a>
                     ))}
-                </section>
+                </div>
             );
         }
 
         function MessageView() {
             return (
-                <section class="bg-emerald-50 p-6 rounded-[2.5rem] border border-emerald-100 shadow-inner animate-fade-in">
-                    <h2 class="text-xl font-bold text-emerald-900">Support Desk</h2>
-                    <p class="text-xs text-emerald-700 mt-2 mb-6 font-medium">Message the Growing Minds lead team directly.</p>
-                    <form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4">
-                        <input name="name" placeholder="Your Name" class="w-full p-4 rounded-2xl border-none text-sm shadow-sm" required />
-                        <textarea name="message" class="w-full p-4 rounded-2xl border-none h-32 text-sm shadow-sm resize-none" placeholder="How can we help?" required></textarea>
-                        <button class="w-full bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Send Message</button>
+                <div class="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+                    <h2 class="text-xl font-bold text-emerald-900">Support</h2>
+                    <form action="https://formspree.io/f/xykzrjlz" method="POST" class="mt-4 space-y-4">
+                        <input name="email" placeholder="Your Email" class="w-full p-3 rounded-xl border-none shadow-sm text-sm" required />
+                        <textarea name="message" class="w-full p-3 rounded-xl border-none shadow-sm text-sm h-24" placeholder="How can we help?" required></textarea>
+                        <button class="w-full bg-emerald-700 text-white font-bold py-3 rounded-xl">Send</button>
                     </form>
-                </section>
+                </div>
             );
         }
 
@@ -247,31 +225,30 @@
             useEffect(() => { refresh(); }, []);
 
             const updateStatus = async (id, field, value) => {
-                await supabase.from('profiles').update({ [field]: value }).eq('id', id);
+                const { error } = await supabase.from('profiles').update({ [field]: value }).eq('id', id);
+                if (error) alert(error.message);
                 refresh();
             };
 
             return (
-                <div class="space-y-6 animate-fade-in">
-                    <h3 class="font-bold text-xs text-slate-500 uppercase tracking-widest pl-2">Educator Verification</h3>
-                    <div class="bg-white border rounded-2xl divide-y shadow-sm overflow-hidden">
+                <div class="space-y-6">
+                    <h3 class="font-bold text-xs text-slate-500 uppercase tracking-widest pl-2">User Controls</h3>
+                    <div class="bg-white border rounded-2xl divide-y shadow-sm">
                         {users.map(u => (
-                            <div key={u.id} class="p-4 flex flex-col gap-3">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <p class="text-xs font-bold text-slate-800">{u.email}</p>
-                                        <p class={`text-[9px] font-black uppercase tracking-widest mt-1 ${u.is_approved ? 'text-emerald-500' : 'text-amber-500'}`}>
-                                            {u.is_approved ? '✓ Approved' : '⚠ Pending'}
-                                        </p>
-                                    </div>
-                                    <select value={u.role} onChange={(e) => updateStatus(u.id, 'role', e.target.value)} class="text-[10px] border rounded p-1 font-bold text-teal-700 outline-none">
-                                        <option value="teacher">TEACHER</option>
-                                        <option value="admin">ADMIN</option>
-                                    </select>
+                            <div key={u.id} class="p-4 flex items-center justify-between">
+                                <div class="truncate w-32">
+                                    <p class="text-[11px] font-bold">{u.email}</p>
+                                    <p class={`text-[9px] font-black uppercase ${u.is_approved ? 'text-emerald-500' : 'text-amber-500'}`}>{u.is_approved ? 'Approved' : 'Pending'}</p>
                                 </div>
-                                <button onClick={() => updateStatus(u.id, 'is_approved', !u.is_approved)} class={`w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${u.is_approved ? 'bg-slate-100 text-slate-400' : 'bg-teal-600 text-white shadow-md'}`}>
-                                    {u.is_approved ? 'Revoke Access' : 'Approve Educator'}
-                                </button>
+                                <div class="flex gap-2">
+                                    <select value={u.role} onChange={(e) => updateStatus(u.id, 'role', e.target.value)} class="text-[10px] border rounded p-1">
+                                        <option value="teacher">Teacher</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                    <button onClick={() => updateStatus(u.id, 'is_approved', !u.is_approved)} class={`px-3 py-1 rounded-lg text-[10px] font-bold ${u.is_approved ? 'bg-slate-100' : 'bg-teal-600 text-white'}`}>
+                                        {u.is_approved ? 'Revoke' : 'Approve'}
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -283,31 +260,21 @@
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [mode, setMode] = useState('login');
-
             const handleAuth = async (e) => {
                 e.preventDefault();
                 const { error } = mode === 'login' ? await supabase.auth.signInWithPassword({ email, password }) : await supabase.auth.signUp({ email, password });
                 if (error) alert(error.message);
-                else if (mode === 'signup') alert("Account created! Waiting for Admin approval.");
             };
-
             return (
-                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white relative overflow-hidden">
-                    <div class="absolute top-[-10%] left-[-10%] w-64 h-64 bg-teal-800 rounded-full blur-3xl opacity-50"></div>
-                    <div class="z-10 flex flex-col items-center w-full max-w-xs animate-fade-in">
-                        <i class="fas fa-seedling text-6xl mb-6 text-teal-300"></i>
-                        <h1 class="text-3xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
-                        <form onSubmit={handleAuth} class="w-full space-y-4">
-                            <input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none focus:ring-4 focus:ring-teal-400" onChange={e => setEmail(e.target.value)} required />
-                            <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none focus:ring-4 focus:ring-teal-400" onChange={e => setPassword(e.target.value)} required />
-                            <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl hover:bg-teal-400 transition uppercase tracking-widest">
-                                {mode === 'login' ? 'Login' : 'Join Community'}
-                            </button>
-                        </form>
-                        <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-8 text-xs font-bold underline decoration-teal-400 opacity-80 underline-offset-8">
-                            {mode === 'login' ? "New educator? Create an account" : "Have an account? Login"}
-                        </button>
-                    </div>
+                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
+                    <i class="fas fa-seedling text-6xl mb-6 text-teal-300"></i>
+                    <h1 class="text-3xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
+                    <form onSubmit={handleAuth} class="w-full max-w-xs space-y-4">
+                        <input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setEmail(e.target.value)} required />
+                        <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setPassword(e.target.value)} required />
+                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl uppercase tracking-widest">{mode === 'login' ? 'Login' : 'Join'}</button>
+                    </form>
+                    <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-8 text-xs font-bold underline opacity-80">{mode === 'login' ? "New account" : "Login"}</button>
                 </div>
             );
         }
