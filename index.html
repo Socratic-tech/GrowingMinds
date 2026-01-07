@@ -3,16 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Growing Minds | Gardyn Educators</title>
+    <title>Growing Minds | Educator Portal</title>
+    
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .glass-header { background: linear-gradient(135deg, #0d9488 0%, #059669 100%); }
-        .custom-scroll::-webkit-scrollbar { display: none; }
-    </style>
 </head>
 <body class="bg-gray-50">
     <div id="root"></div>
@@ -20,97 +18,162 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        // --- SUPABASE CONFIG ---
+        const SUPABASE_URL = 'https://aaiovfryjlcdijdyknik.supabase.co';
+        const SUPABASE_KEY = 'sb_secret_cRdbSsO-1gl-Q5G2e__6qg_dWKdrLjx';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
         function App() {
+            const [user, setUser] = useState(null);
+            const [profile, setProfile] = useState(null);
             const [activeTab, setActiveTab] = useState('feed');
-            const [projects, setProjects] = useState([
-                { id: 1, title: "Grade 2 Basil Trial", author: "Sarah Jenkins", school: "Lincoln Elementary", type: "Genovese Basil", stage: "Seedling", likes: 14, img: "https://images.unsplash.com/photo-1591857177580-dc82b9ac4e1e?w=400", desc: "Using Gen 3 yCubes! Kelby AI is monitoring light cycles." },
-                { id: 2, title: "Biology Lab Greens", author: "Mike Ross", school: "Riverdale High", type: "Mixed Greens", stage: "Vegetative", likes: 28, img: "https://images.unsplash.com/photo-1550948390-6eb7fa773072?w=400", desc: "STEM project focusing on nutrient density." },
-                { id: 3, title: "Cherry Tomato Tower", author: "Elena G.", school: "Science Charter", type: "Tomatoes", stage: "Flowering", likes: 45, img: "https://images.unsplash.com/photo-1592419044706-39796d40f98c?w=400", desc: "Heavy fruit set on the yCubes today!" }
-            ]);
+            const [loading, setLoading] = useState(true);
 
-            const resources = [
-                { title: "Gardyn STEM Curriculum", type: "PDF", cat: "Lesson Plan", icon: "fa-file-pdf" },
-                { title: "Maintenance: yCube Cleaning", type: "Video", cat: "Technical", icon: "fa-play-circle" },
-                { title: "Kelby AI Optimization Guide", type: "Link", cat: "Guide", icon: "fa-external-link" }
-            ];
+            // Auth State Listener
+            useEffect(() => {
+                supabase.auth.getSession().then(({ data: { session } }) => {
+                    if (session) fetchProfile(session.user);
+                    else setLoading(false);
+                });
 
-            // Navigation Component
-            const Nav = () => (
-                <nav class="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-3 text-gray-500">
-                    <button onClick={() => setActiveTab('feed')} class={activeTab === 'feed' ? 'text-teal-600' : ''}><i class="fas fa-home block"></i><span class="text-xs">Feed</span></button>
-                    <button onClick={() => setActiveTab('projects')} class={activeTab === 'projects' ? 'text-teal-600' : ''}><i class="fas fa-leaf block"></i><span class="text-xs">My Gardyn</span></button>
-                    <button onClick={() => setActiveTab('messages')} class={activeTab === 'messages' ? 'text-teal-600' : ''}><i class="fas fa-comment block"></i><span class="text-xs">Messages</span></button>
-                    <button onClick={() => setActiveTab('resources')} class={activeTab === 'resources' ? 'text-teal-600' : ''}><i class="fas fa-book block"></i><span class="text-xs">Library</span></button>
-                </nav>
-            );
+                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                    if (session) fetchProfile(session.user);
+                    else { setUser(null); setProfile(null); setLoading(false); }
+                });
+
+                return () => subscription.unsubscribe();
+            }, []);
+
+            async function fetchProfile(authUser) {
+                const { data } = await supabase.from('profiles').select('*').eq('id', authUser.uid).single();
+                setUser(authUser);
+                setProfile(data || { role: 'teacher' });
+                setLoading(false);
+            }
+
+            if (loading) return <div class="h-screen flex items-center justify-center text-teal-600"><i class="fas fa-circle-notch animate-spin text-4xl"></i></div>;
+
+            if (!user) return <AuthScreen supabase={supabase} />;
 
             return (
-                <div class="max-w-md mx-auto min-h-screen pb-20 relative">
-                    {/* Header */}
-                    <header class="glass-header p-6 text-white rounded-b-3xl shadow-lg mb-4">
-                        <div class="flex items-center gap-2">
-                            <i class="fas fa-seedling text-2xl text-teal-200"></i>
-                            <h1 class="text-xl font-bold italic">Growing Minds</h1>
+                <div class="max-w-md mx-auto min-h-screen pb-20 bg-white relative shadow-xl">
+                    {/* Teal Gradient Header */}
+                    <header class="bg-gradient-to-r from-teal-600 to-emerald-600 p-6 text-white rounded-b-3xl">
+                        <div class="flex justify-between items-center">
+                            <h1 class="text-xl font-bold tracking-tight"><i class="fas fa-seedling mr-2"></i>Growing Minds</h1>
+                            <button onClick={() => supabase.auth.signOut()} class="text-xs bg-white/20 px-3 py-1 rounded-full">Logout</button>
                         </div>
+                        <p class="text-teal-100 text-sm mt-2">Welcome, {user.email}</p>
+                        {profile?.role === 'admin' && <span class="text-[10px] bg-yellow-400 text-teal-900 px-2 py-0.5 rounded-full font-bold uppercase mt-1 inline-block">Project Lead</span>}
                     </header>
 
-                    {/* Content Logic */}
-                    <main class="px-4">
-                        {activeTab === 'feed' && (
-                            <div>
-                                <h2 class="text-lg font-bold text-gray-800 mb-4">Community Feed</h2>
-                                {projects.map(p => (
-                                    <div key={p.id} class="bg-white rounded-2xl shadow-sm border mb-4 overflow-hidden">
-                                        <img src={p.img} class="w-full h-48 object-cover" />
-                                        <div class="p-4">
-                                            <div class="flex items-center gap-2 mb-2">
-                                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold">{p.author[0]}</div>
-                                                <div>
-                                                    <p class="text-sm font-bold text-gray-900 leading-none">{p.author}</p>
-                                                    <p class="text-xs text-gray-500">{p.school}</p>
-                                                </div>
-                                            </div>
-                                            <h3 class="font-bold text-teal-800">{p.title}</h3>
-                                            <span class="text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded-full uppercase font-bold">{p.stage}</span>
-                                            <p class="text-sm text-gray-600 mt-2">{p.desc}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {activeTab === 'messages' && (
-                            <div>
-                                <h2 class="text-lg font-bold text-gray-800 mb-4">Lead Team Chat</h2>
-                                <div class="bg-white rounded-xl border p-4 flex items-center gap-4 mb-3">
-                                    <div class="w-12 h-12 bg-teal-600 rounded-full flex items-center justify-center text-white text-xl">🌱</div>
-                                    <div class="flex-1">
-                                        <p class="font-bold text-gray-900">Growing Minds Lead Team</p>
-                                        <p class="text-xs text-gray-500">How is the new curriculum working?</p>
-                                    </div>
-                                    <div class="w-5 h-5 bg-teal-500 rounded-full text-[10px] text-white flex items-center justify-center">1</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'resources' && (
-                            <div>
-                                <h2 class="text-lg font-bold text-gray-800 mb-4">Official Library</h2>
-                                {resources.map((res, i) => (
-                                    <div key={i} class="bg-white p-4 rounded-xl border flex items-center gap-4 mb-3 shadow-sm">
-                                        <i class={`fas ${res.icon} text-2xl text-teal-600`}></i>
-                                        <div class="flex-1">
-                                            <p class="font-bold text-gray-800">{res.title}</p>
-                                            <p class="text-xs text-gray-500">{res.cat} • {res.type}</p>
-                                        </div>
-                                        <button class="bg-teal-50 text-teal-700 px-3 py-1 rounded-lg text-xs font-bold">Open</button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                    <main class="p-4">
+                        {activeTab === 'feed' && <CommunityFeed />}
+                        {activeTab === 'library' && <ResourceLibrary supabase={supabase} />}
+                        {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel supabase={supabase} />}
                     </main>
 
-                    <Nav />
+                    {/* Navigation Bar */}
+                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around py-4 shadow-lg">
+                        <NavBtn icon="home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
+                        <NavBtn icon="book" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
+                        {profile?.role === 'admin' && <NavBtn icon="user-shield" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
+                    </nav>
+                </div>
+            );
+        }
+
+        // --- Component: Resource Library ---
+        function ResourceLibrary({ supabase }) {
+            const [docs, setDocs] = useState([]);
+            useEffect(() => {
+                supabase.from('resources').select('*').then(({ data }) => setDocs(data || []));
+            }, []);
+
+            return (
+                <div class="space-y-4">
+                    <h2 class="font-bold text-gray-800">Resource Library</h2>
+                    {docs.length === 0 && <p class="text-sm text-gray-400">No resources shared yet.</p>}
+                    {docs.map(res => (
+                        <div key={res.id} class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border">
+                            <i class="fas fa-file-pdf text-teal-600 text-xl"></i>
+                            <div class="flex-1">
+                                <p class="font-bold text-sm text-gray-800">{res.title}</p>
+                                <p class="text-[10px] text-gray-500 uppercase">{res.category}</p>
+                            </div>
+                            <a href={res.url} target="_blank" class="text-teal-600 text-xs font-bold">Open</a>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // --- Component: Admin Panel ---
+        function AdminPanel({ supabase }) {
+            const [users, setUsers] = useState([]);
+            useEffect(() => {
+                supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []));
+            }, []);
+
+            return (
+                <div class="space-y-4">
+                    <h2 class="font-bold text-gray-800 underline decoration-teal-500">Lead Dashboard</h2>
+                    <div class="bg-white border rounded-xl overflow-hidden">
+                        {users.map(u => (
+                            <div key={u.id} class="p-3 border-b flex justify-between items-center text-sm">
+                                <span>{u.email || 'Teacher'}</span>
+                                <select 
+                                    value={u.role} 
+                                    onChange={async (e) => {
+                                        await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id);
+                                        window.location.reload();
+                                    }}
+                                    class="text-xs border rounded p-1"
+                                >
+                                    <option value="teacher">Teacher</option>
+                                    <option value="admin">Lead</option>
+                                </select>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function NavBtn({ icon, active, onClick }) {
+            return (
+                <button onClick={onClick} class={`text-xl ${active ? 'text-teal-600' : 'text-gray-300'}`}>
+                    <i class={`fas fa-${icon}`}></i>
+                </button>
+            );
+        }
+
+        function AuthScreen({ supabase }) {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const handleAuth = async (type) => {
+                const { error } = type === 'login' 
+                    ? await supabase.auth.signInWithPassword({ email, password })
+                    : await supabase.auth.signUp({ email, password });
+                if (error) alert(error.message);
+            };
+            return (
+                <div class="flex flex-col items-center justify-center min-h-screen bg-teal-900 text-white p-10 text-center">
+                    <i class="fas fa-leaf text-5xl mb-4 text-teal-400"></i>
+                    <h1 class="text-2xl font-bold mb-8 italic">Growing Minds</h1>
+                    <input type="email" placeholder="School Email" class="w-full p-3 rounded-lg mb-3 text-gray-900" onChange={e => setEmail(e.target.value)} />
+                    <input type="password" placeholder="Password" class="w-full p-3 rounded-lg mb-6 text-gray-900" onChange={e => setPassword(e.target.value)} />
+                    <button onClick={() => handleAuth('login')} class="w-full bg-teal-500 py-3 rounded-lg font-bold mb-3">Login</button>
+                    <button onClick={() => handleAuth('signup')} class="w-full border border-teal-500 py-3 rounded-lg font-bold">Register</button>
+                </div>
+            );
+        }
+
+        function CommunityFeed() {
+            return (
+                <div class="text-center py-10">
+                    <i class="fas fa-images text-4xl text-gray-200 mb-2"></i>
+                    <p class="text-gray-500 text-sm">Welcome to the community!<br/>Project posts will appear here.</p>
                 </div>
             );
         }
@@ -118,5 +181,7 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
+</body>
+</html>
 </body>
 </html>
