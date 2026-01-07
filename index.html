@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Growing Minds | Admin Portal</title>
+    <title>Growing Minds | Secure Portal</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,10 +33,14 @@
             const [pendingCount, setPendingCount] = useState(0);
 
             const fetchProfile = async (authUser) => {
-                const { data } = await supabaseClient.from('profiles').select('*').eq('id', authUser.id).single();
-                setProfile(data);
+                const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', authUser.id).single();
+                
+                // If profile doesn't exist yet, we stay in loading/pending state
+                if (data) {
+                    setProfile(data);
+                    if (data.role === 'admin') fetchPendingCount();
+                }
                 setUser(authUser);
-                if (data?.role === 'admin') fetchPendingCount();
                 setLoading(false);
             };
 
@@ -53,10 +57,22 @@
                 return () => subscription.unsubscribe();
             }, []);
 
-            if (loading) return <div class="h-screen flex items-center justify-center text-teal-600"><i class="fas fa-seedling animate-bounce text-5xl"></i></div>;
-            if (!user) return <AuthScreen />;
-            if (profile && !profile.is_approved) return <PendingScreen email={user.email} />;
+            // 1. Still loading user/profile data
+            if (loading) {
+                return <div class="h-screen flex items-center justify-center text-teal-600"><i class="fas fa-seedling animate-bounce text-5xl"></i></div>;
+            }
 
+            // 2. Not logged in at all
+            if (!user) {
+                return <AuthScreen />;
+            }
+
+            // 3. Logged in, but NOT approved (Strict Gatekeeper)
+            if (!profile || profile.is_approved !== true) {
+                return <PendingScreen email={user.email} isNew={!profile} />;
+            }
+
+            // 4. Logged in AND Approved -> Show the App
             return (
                 <div class="max-w-md mx-auto min-h-screen pb-24 bg-white relative shadow-2xl flex flex-col">
                     <header class="bg-gradient-to-br from-teal-800 to-emerald-900 p-6 text-white rounded-b-[2.5rem] shadow-lg">
@@ -66,27 +82,27 @@
                         </div>
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center border border-white/30 text-xl shadow-inner">
-                                {profile?.role === 'admin' ? '👑' : '🧑‍🏫'}
+                                {profile.role === 'admin' ? '👑' : '🧑‍🏫'}
                             </div>
                             <div>
-                                <p class="text-[10px] text-teal-200 font-bold uppercase tracking-widest">{profile?.role === 'admin' ? 'Project Lead' : 'Educator'}</p>
+                                <p class="text-[10px] text-teal-200 font-bold uppercase tracking-widest">{profile.role === 'admin' ? 'Project Lead' : 'Educator'}</p>
                                 <p class="font-bold text-lg leading-tight truncate w-40">{user.email.split('@')[0]}</p>
                             </div>
                         </div>
                     </header>
 
                     <main class="flex-1 p-5 overflow-y-auto custom-scroll">
-                        {activeTab === 'feed' && <CommunityFeed user={user} isAdmin={profile?.role === 'admin'} />}
-                        {activeTab === 'library' && <LibraryView isAdmin={profile?.role === 'admin'} />}
+                        {activeTab === 'feed' && <CommunityFeed user={user} isAdmin={profile.role === 'admin'} />}
+                        {activeTab === 'library' && <LibraryView isAdmin={profile.role === 'admin'} />}
                         {activeTab === 'messages' && <MessageView />}
-                        {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel onUpdate={fetchPendingCount} />}
+                        {activeTab === 'admin' && profile.role === 'admin' && <AdminPanel onUpdate={fetchPendingCount} />}
                     </main>
 
                     <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg z-50">
                         <NavBtn icon="house" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
                         <NavBtn icon="book-bookmark" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
                         <NavBtn icon="comment-dots" label="Support" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
-                        {profile?.role === 'admin' && (
+                        {profile.role === 'admin' && (
                             <div class="relative">
                                 <NavBtn icon="shield-halved" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />
                                 {pendingCount > 0 && <span class="absolute top-1 right-1 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">{pendingCount}</span>}
@@ -106,87 +122,48 @@
             );
         }
 
-        // --- REVISED ADMIN PANEL WITH DEBUGGING ---
         function AdminPanel({ onUpdate }) {
             const [users, setUsers] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [errorMsg, setErrorMsg] = useState('');
-
             const refresh = async () => {
-                setLoading(true);
-                const { data, error } = await supabaseClient.from('profiles').select('*').order('created_at', { ascending: false });
-                if (error) setErrorMsg(error.message);
-                else setUsers(data || []);
-                setLoading(false);
+                const { data } = await supabaseClient.from('profiles').select('*').order('created_at', { ascending: false });
+                setUsers(data || []);
                 onUpdate();
             };
-
             useEffect(() => { refresh(); }, []);
-
             const updateStatus = async (id, field, value) => {
                 await supabaseClient.from('profiles').update({ [field]: value }).eq('id', id);
                 refresh();
             };
-
-            // Aggressive filtering (includes null/undefined)
             const pending = users.filter(u => u.is_approved === false || u.is_approved === null);
-            const active = users.filter(u => u.is_approved === true);
-
+            const activeUsers = users.filter(u => u.is_approved === true);
             return (
                 <div class="space-y-6 animate-fade-in">
                     <div class="flex justify-between items-center px-2">
                         <h3 class="font-black text-xs text-slate-400 uppercase tracking-widest">User Management</h3>
                         <button onClick={refresh} class="text-[10px] bg-slate-100 px-3 py-1 rounded-full font-bold">Refresh</button>
                     </div>
-
-                    {errorMsg && <div class="p-3 bg-red-50 text-red-600 text-xs rounded-xl font-bold">{errorMsg}</div>}
-
-                    {/* Pending Section */}
-                    <div class="space-y-3">
-                        <p class="text-xs font-bold text-amber-600 px-2 uppercase tracking-tighter">Awaiting Approval ({pending.length})</p>
+                    <section class="space-y-3">
+                        <p class="text-xs font-bold text-amber-600 px-2 uppercase">Pending ({pending.length})</p>
                         {pending.map(u => (
                             <div key={u.id} class="p-4 bg-amber-50 border border-amber-100 rounded-[2rem] shadow-sm">
-                                <div class="flex justify-between items-start mb-3">
-                                    <div class="truncate pr-4">
-                                        <p class="text-xs font-black text-slate-800">{u.email}</p>
-                                        <p class="text-[9px] text-slate-400 mt-0.5 uppercase">ID: {u.id.slice(0,8)}</p>
-                                    </div>
-                                    <select value={u.role} onChange={(e) => updateStatus(u.id, 'role', e.target.value)} class="text-[10px] border rounded-lg p-1 font-bold text-teal-700 bg-white">
-                                        <option value="teacher">Teacher</option>
-                                        <option value="admin">Admin</option>
-                                    </select>
-                                </div>
-                                <button onClick={() => updateStatus(u.id, 'is_approved', true)} class="w-full py-3 bg-teal-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-teal-700/20">Approve Educator</button>
+                                <p class="text-xs font-black text-slate-800 truncate mb-3">{u.email}</p>
+                                <button onClick={() => updateStatus(u.id, 'is_approved', true)} class="w-full py-3 bg-teal-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Approve</button>
                             </div>
                         ))}
-                    </div>
-
-                    {/* Active Section */}
-                    <div class="space-y-3">
-                        <p class="text-xs font-bold text-slate-400 px-2 uppercase tracking-tighter">Active Community ({active.length})</p>
-                        {active.map(u => (
+                    </section>
+                    <section class="space-y-3">
+                        <p class="text-xs font-bold text-slate-400 px-2 uppercase">Approved ({activeUsers.length})</p>
+                        {activeUsers.map(u => (
                             <div key={u.id} class="p-4 bg-white border border-slate-100 rounded-[2rem] shadow-sm flex items-center justify-between">
-                                <div class="truncate pr-4">
-                                    <p class="text-xs font-bold text-slate-800">{u.email}</p>
-                                    <p class="text-[9px] text-teal-600 font-black uppercase">{u.role}</p>
-                                </div>
-                                <button onClick={() => updateStatus(u.id, 'is_approved', false)} class="text-[10px] font-bold text-red-400 hover:text-red-600">Revoke</button>
+                                <p class="text-xs font-bold text-slate-800 truncate">{u.email}</p>
+                                <button onClick={() => updateStatus(u.id, 'is_approved', false)} class="text-[10px] font-bold text-red-400">Revoke</button>
                             </div>
                         ))}
-                    </div>
-
-                    {/* DEBUG PANEL - Remove this after it works */}
-                    <div class="mt-10 p-4 bg-slate-900 rounded-2xl text-[10px] text-emerald-400 font-mono">
-                        <p class="mb-2 uppercase font-black text-slate-500 underline">System Debug</p>
-                        <p>Total Data Rows: {users.length}</p>
-                        <p>Status: {loading ? 'Fetching...' : 'Idle'}</p>
-                        <p>Last Error: {errorMsg || 'None'}</p>
-                    </div>
+                    </section>
                 </div>
             );
         }
 
-        // --- OTHER COMPONENTS ---
         function CommunityFeed({ user, isAdmin }) {
             const [posts, setPosts] = useState([]);
             const [content, setContent] = useState('');
@@ -195,11 +172,6 @@
             const fetchPosts = async () => {
                 const { data } = await supabaseClient.from('posts').select('*, profiles(email)').order('created_at', { ascending: false });
                 setPosts(data || []);
-            };
-            const deletePost = async (id) => {
-                if (!confirm("Delete post?")) return;
-                await supabaseClient.from('posts').delete().eq('id', id);
-                fetchPosts();
             };
             const handleUpload = async (e) => {
                 e.preventDefault();
@@ -225,9 +197,8 @@
                         </div>
                     </div>
                     {posts.map(post => (
-                        <article key={post.id} class="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm relative mb-6">
-                            {isAdmin && <button onClick={() => deletePost(post.id)} class="absolute top-4 right-4 bg-red-500 text-white w-8 h-8 rounded-full z-10 flex items-center justify-center shadow-lg"><i class="fas fa-trash-can text-[10px]"></i></button>}
-                            <div class="p-4 flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-bold uppercase">{post.profiles?.email?.[0]}</div><p class="text-xs font-bold">{post.profiles?.email.split('@')[0]}</p></div>
+                        <article key={post.id} class="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm mb-6">
+                            <div class="p-4 flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-bold uppercase">{post.profiles?.email?.[0] || '?'}</div><p class="text-xs font-bold">{post.profiles?.email?.split('@')[0] || 'Educator'}</p></div>
                             <img src={post.image_url} class="w-full h-64 object-cover" /><div class="p-5 text-sm font-medium text-slate-700">{post.content}</div>
                         </article>
                     ))}
@@ -237,48 +208,22 @@
 
         function LibraryView({ isAdmin }) {
             const [res, setRes] = useState([]);
-            const [title, setTitle] = useState('');
-            const [url, setUrl] = useState('');
-            const [cat, setCat] = useState('Guide');
-            const [showAdd, setShowAdd] = useState(false);
-            const fetchRes = async () => {
-                const { data } = await supabaseClient.from('resources').select('*').order('created_at', { ascending: false });
-                setRes(data || []);
-            };
-            const addRes = async (e) => {
-                e.preventDefault();
-                await supabaseClient.from('resources').insert([{ title, url, category: cat }]);
-                setTitle(''); setUrl(''); setShowAdd(false); fetchRes();
-            };
-            const deleteRes = async (id) => {
-                if (!confirm("Delete?")) return;
-                await supabaseClient.from('resources').delete().eq('id', id);
+            useEffect(() => {
+                const fetchRes = async () => {
+                    const { data } = await supabaseClient.from('resources').select('*').order('created_at', { ascending: false });
+                    setRes(data || []);
+                };
                 fetchRes();
-            };
-            useEffect(() => { fetchRes(); }, []);
+            }, []);
             return (
                 <div class="space-y-6">
-                    <div class="flex justify-between items-center px-1">
-                        <h2 class="text-xl font-black text-slate-800 italic uppercase">Resources</h2>
-                        {isAdmin && <button onClick={() => setShowAdd(!showAdd)} class="bg-teal-700 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg"><i class={`fas fa-${showAdd ? 'minus' : 'plus'} text-xs`}></i></button>}
-                    </div>
-                    {isAdmin && showAdd && (
-                        <form onSubmit={addRes} class="bg-teal-50 p-5 rounded-[2rem] border-2 border-teal-100 space-y-3">
-                            <input placeholder="Resource Title" class="w-full p-3 rounded-xl border-none text-sm shadow-sm" value={title} onChange={e => setTitle(e.target.value)} required />
-                            <input placeholder="Link URL" class="w-full p-3 rounded-xl border-none text-sm shadow-sm" value={url} onChange={e => setUrl(e.target.value)} required />
-                            <select class="w-full p-3 rounded-xl border-none text-sm shadow-sm bg-white" value={cat} onChange={e => setCat(e.target.value)}><option>Guide</option><option>Curriculum</option><option>Video</option></select>
-                            <button class="w-full bg-teal-700 text-white font-bold py-3 rounded-xl text-xs uppercase tracking-widest">Save</button>
-                        </form>
-                    )}
+                    <h2 class="text-xl font-black text-slate-800 italic uppercase">Resources</h2>
                     <div class="grid gap-4">
                         {res.map(r => (
-                            <div key={r.id} class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between transition-all hover:border-teal-300">
-                                <a href={r.url} target="_blank" class="flex items-center gap-4 flex-1">
-                                    <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-xl flex items-center justify-center text-lg"><i class={`fas fa-${r.url.includes('pdf') ? 'file-pdf' : 'link'}`}></i></div>
-                                    <div><p class="text-sm font-bold text-slate-800">{r.title}</p><p class="text-[9px] font-black text-teal-600 uppercase tracking-widest">{r.category || 'General'}</p></div>
-                                </a>
-                                {isAdmin && <button onClick={() => deleteRes(r.id)} class="text-slate-300 hover:text-red-500 p-2"><i class="fas fa-trash-can text-sm"></i></button>}
-                            </div>
+                            <a key={r.id} href={r.url} target="_blank" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 transition-all hover:border-teal-300">
+                                <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-xl flex items-center justify-center text-lg"><i class="fas fa-link"></i></div>
+                                <div><p class="text-sm font-bold text-slate-800">{r.title}</p><p class="text-[9px] font-black text-teal-600 uppercase tracking-widest">{r.category}</p></div>
+                            </a>
                         ))}
                     </div>
                 </div>
@@ -286,7 +231,24 @@
         }
 
         function MessageView() { return <div class="bg-emerald-50 p-8 rounded-[2.5rem] border border-emerald-100"><h2 class="text-xl font-bold text-emerald-900 mb-4">Support Desk</h2><form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4"><input name="email" placeholder="Your Email" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm" required /><textarea name="message" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm h-32" placeholder="How can we help?" required></textarea><button class="w-full bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg uppercase tracking-widest text-xs">Send Message</button></form></div>; }
-        function PendingScreen({ email }) { return <div class="h-screen flex flex-col items-center justify-center p-10 text-center"><i class="fas fa-user-shield text-5xl text-amber-500 mb-6"></i><h2 class="font-black uppercase tracking-tighter">Pending Approval</h2><p class="text-sm text-slate-500 mt-2">Hi {email.split('@')[0]}, an admin will approve you shortly.</p><button onClick={() => supabaseClient.auth.signOut()} class="mt-8 text-xs font-bold underline">Logout</button></div>; }
+
+        function PendingScreen({ email, isNew }) {
+            return (
+                <div class="h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center animate-fade-in">
+                    <div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-6 shadow-inner animate-pulse">
+                        <i class="fas fa-user-shield"></i>
+                    </div>
+                    <h2 class="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">
+                        {isNew ? 'Setting up Profile...' : 'Awaiting Approval'}
+                    </h2>
+                    <p class="text-xs text-slate-500 mb-8 leading-relaxed max-w-[240px]">
+                        Hi <strong>{email.split('@')[0]}</strong>, our administrators verify every educator account to keep the community safe.
+                    </p>
+                    <button onClick={() => supabaseClient.auth.signOut()} class="text-teal-700 font-bold text-[10px] underline uppercase tracking-widest">Sign Out</button>
+                </div>
+            );
+        }
+
         function AuthScreen() {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
@@ -295,6 +257,7 @@
                 e.preventDefault();
                 const { error } = mode === 'login' ? await supabaseClient.auth.signInWithPassword({ email, password }) : await supabaseClient.auth.signUp({ email, password });
                 if (error) alert(error.message);
+                else if (mode === 'signup') alert("Check email for verification or wait for admin approval!");
             };
             return (
                 <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white"><i class="fas fa-seedling text-7xl mb-6 text-teal-300"></i><h1 class="text-4xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1><form onSubmit={handleAuth} class="w-full max-w-xs space-y-4"><input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setEmail(e.target.value)} required /><input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setPassword(e.target.value)} required /><button class="w-full bg-teal-500 py-4 rounded-2xl font-black shadow-2xl uppercase tracking-widest">{mode === 'login' ? 'Login' : 'Join'}</button></form><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-10 text-xs font-bold underline opacity-80">{mode === 'login' ? "New educator? Join" : "Back to Login"}</button></div>
