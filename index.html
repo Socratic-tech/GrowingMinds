@@ -25,7 +25,6 @@
         const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // --- MAIN APP COMPONENT ---
         function App() {
             const [user, setUser] = useState(null);
             const [profile, setProfile] = useState(null);
@@ -63,11 +62,11 @@
             const isAdmin = profile.role === 'admin';
 
             return (
-                <div class="max-w-md mx-auto min-h-screen pb-24 bg-white relative shadow-2xl flex flex-col">
+                <div class="max-w-md mx-auto min-h-screen bg-white relative shadow-2xl flex flex-col">
                     <header class="bg-gradient-to-br from-teal-800 to-emerald-900 p-6 text-white rounded-b-[2.5rem] shadow-lg">
                         <div class="flex justify-between items-center mb-6">
                             <span class="text-xl font-black italic uppercase tracking-tight">Growing Minds</span>
-                            <button onClick={() => supabaseClient.auth.signOut()} class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20 font-bold uppercase">Logout</button>
+                            <button onClick={() => supabaseClient.auth.signOut()} class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20 font-bold uppercase tracking-widest">Logout</button>
                         </div>
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center border border-white/30 text-xl shadow-inner">
@@ -80,21 +79,22 @@
                         </div>
                     </header>
 
-                    <main class="flex-1 p-5 overflow-y-auto custom-scroll">
+                    <main class="flex-1 p-5 overflow-y-auto custom-scroll pb-32">
                         {activeTab === 'feed' && <CommunityFeed user={user} isAdmin={isAdmin} />}
                         {activeTab === 'library' && <LibraryView isAdmin={isAdmin} />}
                         {activeTab === 'messages' && <MessageView />}
                         {activeTab === 'admin' && isAdmin && <AdminPanel onUpdate={fetchPendingCount} />}
                     </main>
 
-                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg z-50">
-                        <NavBtn icon="house" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
-                        <NavBtn icon="book-bookmark" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
-                        <NavBtn icon="comment-dots" label="Support" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
+                    {/* FIXED NAVIGATION */}
+                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-slate-100 flex justify-around items-center py-4 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-50 rounded-t-[2rem]">
+                        <NavBtn icon="home" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
+                        <NavBtn icon="book" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
+                        <NavBtn icon="comment" label="Support" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
                         {isAdmin && (
                             <div class="relative">
-                                <NavBtn icon="shield-halved" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />
-                                {pendingCount > 0 && <span class="absolute top-1 right-1 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">{pendingCount}</span>}
+                                <NavBtn icon="user-shield" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />
+                                {pendingCount > 0 && <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">{pendingCount}</span>}
                             </div>
                         )}
                     </nav>
@@ -104,14 +104,13 @@
 
         function NavBtn({ icon, label, active, onClick }) {
             return (
-                <button onClick={onClick} class={`flex flex-col items-center gap-1 p-2 transition-all ${active ? 'text-teal-700 scale-105' : 'text-gray-400'}`}>
-                    <i class={`fas fa-${icon} text-lg`}></i>
-                    <span class="text-[10px] font-bold uppercase">{label}</span>
+                <button onClick={onClick} class={`flex flex-col items-center gap-1.5 px-4 transition-all duration-300 ${active ? 'text-teal-700 scale-110' : 'text-slate-300'}`}>
+                    <i class={`fas fa-${icon} text-xl`}></i>
+                    <span class="text-[9px] font-black uppercase tracking-tighter">{label}</span>
                 </button>
             );
         }
 
-        // --- COMMUNITY FEED & COMMENTS ---
         function CommunityFeed({ user, isAdmin }) {
             const [posts, setPosts] = useState([]);
             const [content, setContent] = useState('');
@@ -125,7 +124,7 @@
 
             const handleUpload = async (e) => {
                 e.preventDefault();
-                if (!file || !content) return alert("Photo and caption required.");
+                if (!file || !content) return alert("Select photo & caption.");
                 setUploading(true);
                 try {
                     const fileName = `${Date.now()}.jpg`;
@@ -137,35 +136,23 @@
                 setUploading(false);
             };
 
-            const deletePost = async (id) => {
-                if(confirm("Delete this post?")) {
-                    await supabaseClient.from('posts').delete().eq('id', id);
-                    fetchPosts();
-                }
-            };
-
             useEffect(() => { fetchPosts(); }, []);
 
             return (
                 <div class="space-y-6">
                     <div class="bg-white p-4 rounded-3xl border-2 border-teal-50 shadow-sm">
-                        <textarea placeholder="Share your garden update..." class="w-full p-3 text-sm bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 mb-3 resize-none" rows="2" value={content} onChange={e => setContent(e.target.value)} />
+                        <textarea placeholder="Update the garden..." class="w-full p-3 text-sm bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-teal-500 mb-3 resize-none" rows="2" value={content} onChange={e => setContent(e.target.value)} />
                         <div class="flex items-center justify-between">
                             <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold"><i class="fas fa-camera mr-2"></i>Photo<input type="file" accept="image/*" class="sr-only" onChange={e => setFile(e.target.files[0])} /></label>
-                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold">{uploading ? '...' : 'Post'}</button>
+                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-md active:scale-95">Post</button>
                         </div>
                     </div>
-
                     {posts.map(post => (
-                        <article key={post.id} class="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm mb-6 animate-fade-in relative">
-                            {isAdmin && <button onClick={() => deletePost(post.id)} class="absolute top-4 right-4 bg-red-500 text-white w-8 h-8 rounded-full z-10 flex items-center justify-center shadow-lg"><i class="fas fa-trash-can text-[10px]"></i></button>}
-                            <div class="p-4 flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-bold uppercase">{post.profiles?.email?.[0]}</div>
-                                <p class="text-xs font-bold">{post.profiles?.email?.split('@')[0]}</p>
-                            </div>
-                            <img src={post.image_url} class="w-full h-64 object-cover" />
+                        <article key={post.id} class="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm mb-6 animate-fade-in">
+                            <div class="p-4 flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-[10px] font-bold uppercase">{post.profiles?.email?.[0]}</div><p class="text-xs font-bold">{post.profiles?.email?.split('@')[0]}</p></div>
+                            <img src={post.image_url} class="w-full h-72 object-cover bg-slate-100" />
                             <div class="p-5">
-                                <p class="text-sm text-slate-700 mb-4">{post.content}</p>
+                                <p class="text-sm text-slate-700 leading-relaxed mb-4">{post.content}</p>
                                 <CommentSection postId={post.id} userId={user.id} isAdmin={isAdmin} />
                             </div>
                         </article>
@@ -177,50 +164,40 @@
         function CommentSection({ postId, userId, isAdmin }) {
             const [comments, setComments] = useState([]);
             const [newComment, setNewComment] = useState('');
-
             const fetchComments = async () => {
                 const { data } = await supabaseClient.from('comments').select('*, profiles(email)').eq('post_id', postId).order('created_at', { ascending: true });
                 setComments(data || []);
             };
-
             const handleComment = async (e) => {
                 e.preventDefault();
                 if (!newComment.trim()) return;
                 await supabaseClient.from('comments').insert([{ post_id: postId, user_id: userId, content: newComment }]);
                 setNewComment(''); fetchComments();
             };
-
             const deleteComment = async (id) => {
                 await supabaseClient.from('comments').delete().eq('id', id);
                 fetchComments();
             };
-
             useEffect(() => { fetchComments(); }, []);
-
             return (
-                <div class="pt-4 border-t border-slate-50">
-                    <div class="space-y-3 mb-4">
-                        {comments.map(c => (
-                            <div key={c.id} class="flex gap-2 group">
-                                <div class="flex-1 bg-slate-50 p-2 px-3 rounded-2xl relative">
-                                    <p class="text-[10px] font-bold text-teal-700">{c.profiles?.email?.split('@')[0]}</p>
-                                    <p class="text-xs text-slate-600">{c.content}</p>
-                                    {(isAdmin || c.user_id === userId) && (
-                                        <button onClick={() => deleteComment(c.id)} class="absolute right-2 top-2 text-[10px] text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-times"></i></button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <form onSubmit={handleComment} class="flex gap-2">
-                        <input placeholder="Add a comment..." class="flex-1 bg-slate-100 border-none rounded-xl px-4 py-2 text-xs" value={newComment} onChange={e => setNewComment(e.target.value)} />
-                        <button class="text-teal-600 p-2"><i class="fas fa-paper-plane"></i></button>
+                <div class="pt-4 border-t border-slate-50 space-y-3">
+                    {comments.map(c => (
+                        <div key={c.id} class="bg-slate-50 p-3 rounded-2xl relative group">
+                            <p class="text-[9px] font-black text-teal-700 uppercase mb-1">{c.profiles?.email?.split('@')[0]}</p>
+                            <p class="text-xs text-slate-600">{c.content}</p>
+                            {(isAdmin || c.user_id === userId) && (
+                                <button onClick={() => deleteComment(c.id)} class="absolute right-3 top-3 text-[10px] text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-times"></i></button>
+                            )}
+                        </div>
+                    ))}
+                    <form onSubmit={handleComment} class="flex gap-2 mt-2">
+                        <input placeholder="Say something..." class="flex-1 bg-slate-50 border-none rounded-xl px-4 py-2 text-xs focus:ring-1 focus:ring-teal-500" value={newComment} onChange={e => setNewComment(e.target.value)} />
+                        <button class="text-teal-600 px-2"><i class="fas fa-paper-plane"></i></button>
                     </form>
                 </div>
             );
         }
 
-        // --- LIBRARY VIEW ---
         function LibraryView({ isAdmin }) {
             const [res, setRes] = useState([]);
             const [showAdd, setShowAdd] = useState(false);
@@ -240,40 +217,40 @@
             };
 
             const handleDelete = async (id) => {
-                if(confirm("Delete resource?")) { await supabaseClient.from('resources').delete().eq('id', id); fetchRes(); }
+                if(confirm("Delete?")) { await supabaseClient.from('resources').delete().eq('id', id); fetchRes(); }
             };
 
             useEffect(() => { fetchRes(); }, []);
 
             return (
                 <div class="space-y-6">
-                    <div class="flex justify-between items-center">
+                    <div class="flex justify-between items-center px-1">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-teal-100 text-teal-700 rounded-2xl flex items-center justify-center shadow-sm"><i class="fas fa-book-open"></i></div>
-                            <h2 class="text-xl font-black text-slate-800 italic uppercase">Library</h2>
+                            <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-2xl flex items-center justify-center shadow-sm"><i class="fas fa-book-open"></i></div>
+                            <h2 class="text-xl font-black text-slate-800 italic uppercase tracking-tighter">Library</h2>
                         </div>
                         {isAdmin && <button onClick={() => setShowAdd(!showAdd)} class="bg-teal-700 text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg"><i class={`fas fa-${showAdd ? 'times' : 'plus'}`}></i></button>}
                     </div>
 
                     {showAdd && (
                         <form onSubmit={handleAdd} class="bg-teal-50 p-6 rounded-[2.5rem] border-2 border-teal-100 space-y-3">
-                            <input placeholder="Resource Title" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm" value={title} onChange={e => setTitle(e.target.value)} required />
+                            <input placeholder="Title" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm" value={title} onChange={e => setTitle(e.target.value)} required />
                             <input placeholder="URL" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm" value={url} onChange={e => setUrl(e.target.value)} required />
                             <select class="w-full p-4 rounded-2xl border-none shadow-sm text-sm bg-white" value={category} onChange={e => setCategory(e.target.value)}>
                                 <option>Guide</option><option>Curriculum</option><option>Video</option>
                             </select>
-                            <button class="w-full bg-teal-700 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest">Save Resource</button>
+                            <button class="w-full bg-teal-700 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest shadow-md">Add Resource</button>
                         </form>
                     )}
 
                     <div class="grid gap-4">
                         {res.map(r => (
-                            <div key={r.id} class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                            <div key={r.id} class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group">
                                 <a href={r.url} target="_blank" class="flex items-center gap-4 flex-1">
-                                    <div class="w-10 h-10 bg-slate-50 text-teal-700 rounded-xl flex items-center justify-center text-lg"><i class={`fas fa-${r.category === 'Video' ? 'circle-play' : 'file-lines'}`}></i></div>
-                                    <div><p class="text-sm font-bold text-slate-800">{r.title}</p><p class="text-[9px] font-black text-teal-600 uppercase mt-1">{r.category}</p></div>
+                                    <div class="w-10 h-10 bg-slate-50 text-teal-600 rounded-xl flex items-center justify-center"><i class="fas fa-link"></i></div>
+                                    <div><p class="text-sm font-bold text-slate-800">{r.title}</p><p class="text-[9px] font-black text-teal-600 uppercase">{r.category}</p></div>
                                 </a>
-                                {isAdmin && <button onClick={() => handleDelete(r.id)} class="text-slate-300 hover:text-red-500 p-2"><i class="fas fa-trash-can"></i></button>}
+                                {isAdmin && <button onClick={() => handleDelete(r.id)} class="text-slate-200 hover:text-red-500 p-2"><i class="fas fa-trash-can"></i></button>}
                             </div>
                         ))}
                     </div>
@@ -281,7 +258,6 @@
             );
         }
 
-        // --- ADMIN PANEL ---
         function AdminPanel({ onUpdate }) {
             const [users, setUsers] = useState([]);
             const refresh = async () => {
@@ -294,37 +270,28 @@
                 await supabaseClient.from('profiles').update({ [field]: value }).eq('id', id);
                 refresh();
             };
-
             const pending = users.filter(u => !u.is_approved);
             const active = users.filter(u => u.is_approved);
-
             return (
                 <div class="space-y-6">
-                    <div class="flex justify-between items-center">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-slate-800 text-white rounded-2xl flex items-center justify-center shadow-lg"><i class="fas fa-shield-halved"></i></div>
-                            <h2 class="text-xl font-black text-slate-800 italic uppercase">Admin</h2>
-                        </div>
+                    <div class="flex items-center gap-3 px-1">
+                        <div class="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg"><i class="fas fa-user-shield"></i></div>
+                        <h2 class="text-xl font-black text-slate-800 italic uppercase">Control</h2>
                     </div>
-
                     <section class="space-y-3">
-                        <p class="text-[10px] font-black text-amber-600 px-2 uppercase flex items-center gap-2"><i class="fas fa-clock"></i> Pending ({pending.length})</p>
+                        <p class="text-[10px] font-black text-amber-600 px-2 uppercase tracking-widest flex items-center gap-2"><i class="fas fa-clock"></i> Pending Approval ({pending.length})</p>
                         {pending.map(u => (
                             <div key={u.id} class="p-4 bg-amber-50 border border-amber-100 rounded-[2rem] shadow-sm">
                                 <p class="text-xs font-black text-slate-800 truncate mb-3">{u.email}</p>
-                                <button onClick={() => updateStatus(u.id, 'is_approved', true)} class="w-full py-3 bg-teal-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg">Approve</button>
+                                <button onClick={() => updateStatus(u.id, 'is_approved', true)} class="w-full py-3 bg-teal-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg">Verify User</button>
                             </div>
                         ))}
                     </section>
-
                     <section class="space-y-3">
-                        <p class="text-[10px] font-black text-slate-400 px-2 uppercase flex items-center gap-2"><i class="fas fa-check-circle text-emerald-500"></i> Active ({active.length})</p>
+                        <p class="text-[10px] font-black text-slate-400 px-2 uppercase tracking-widest flex items-center gap-2"><i class="fas fa-check-circle text-emerald-500"></i> Active Educators ({active.length})</p>
                         {active.map(u => (
                             <div key={u.id} class="p-4 bg-white border border-slate-100 rounded-[2rem] shadow-sm flex items-center justify-between">
-                                <div class="truncate pr-4">
-                                    <p class="text-xs font-bold text-slate-800">{u.email}</p>
-                                    <p class="text-[9px] text-teal-600 font-black uppercase">{u.role}</p>
-                                </div>
+                                <div class="truncate pr-4"><p class="text-xs font-bold text-slate-800">{u.email}</p><p class="text-[9px] text-teal-600 font-black uppercase">{u.role}</p></div>
                                 <button onClick={() => updateStatus(u.id, 'is_approved', false)} class="text-slate-300 hover:text-red-500"><i class="fas fa-user-minus"></i></button>
                             </div>
                         ))}
@@ -333,11 +300,8 @@
             );
         }
 
-        // --- AUTH & PENDING SCREENS ---
-        function MessageView() { return <div class="bg-emerald-50 p-8 rounded-[2.5rem] border border-emerald-100"><h2 class="text-xl font-bold text-emerald-900 mb-4 flex items-center gap-3"><i class="fas fa-headset"></i> Support</h2><form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4"><input name="email" placeholder="Your Email" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm" required /><textarea name="message" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm h-32" placeholder="Describe the issue..." required></textarea><button class="w-full bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg uppercase tracking-widest text-xs">Send Message</button></form></div>; }
-        
-        function PendingScreen({ email, isNew }) { return <div class="h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center animate-fade-in"><div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-6 shadow-inner animate-pulse"><i class="fas fa-user-shield"></i></div><h2 class="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">{isNew ? 'Creating Profile...' : 'Awaiting Approval'}</h2><p class="text-xs text-slate-500 mb-8 leading-relaxed">Hi <strong>{email.split('@')[0]}</strong>, an admin needs to verify your educator status before you can access the community. Try refreshing in a few minutes.</p><button onClick={() => supabaseClient.auth.signOut()} class="text-teal-700 font-bold text-[10px] underline uppercase tracking-widest">Sign Out</button></div>; }
-        
+        function MessageView() { return <div class="bg-emerald-50 p-8 rounded-[2.5rem] border border-emerald-100"><h2 class="text-xl font-bold text-emerald-900 mb-4 flex items-center gap-3"><i class="fas fa-headset"></i> Support</h2><form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4"><input name="email" placeholder="Your Email" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm" required /><textarea name="message" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm h-32" placeholder="Help us help you..." required></textarea><button class="w-full bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg uppercase tracking-widest text-xs">Send Message</button></form></div>; }
+        function PendingScreen({ email, isNew }) { return <div class="h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center animate-fade-in"><div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-6 shadow-inner animate-pulse"><i class="fas fa-shield-halved"></i></div><h2 class="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">{isNew ? 'Creating Profile...' : 'Access Restricted'}</h2><p class="text-xs text-slate-500 mb-8 leading-relaxed">Hi <strong>{email.split('@')[0]}</strong>, an admin is verifying your credentials. Refresh shortly.</p><button onClick={() => supabaseClient.auth.signOut()} class="text-teal-700 font-bold text-[10px] underline uppercase tracking-widest">Sign Out</button></div>; }
         function AuthScreen() {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
@@ -346,10 +310,9 @@
                 e.preventDefault();
                 const { error } = mode === 'login' ? await supabaseClient.auth.signInWithPassword({ email, password }) : await supabaseClient.auth.signUp({ email, password });
                 if (error) alert(error.message);
-                else if (mode === 'signup') alert("Check email for verification!");
             };
             return (
-                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white"><i class="fas fa-seedling text-7xl mb-6 text-teal-300"></i><h1 class="text-4xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1><form onSubmit={handleAuth} class="w-full max-w-xs space-y-4"><input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setEmail(e.target.value)} required /><input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none" onChange={e => setPassword(e.target.value)} required /><button class="w-full bg-teal-500 py-4 rounded-2xl font-black shadow-2xl uppercase tracking-widest">{mode === 'login' ? 'Login' : 'Join Community'}</button></form><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-10 text-xs font-bold underline opacity-80 decoration-teal-400 underline-offset-8">{mode === 'login' ? "New educator? Create an account" : "Back to Login"}</button></div>
+                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white"><i class="fas fa-seedling text-7xl mb-6 text-teal-300"></i><h1 class="text-4xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1><form onSubmit={handleAuth} class="w-full max-w-xs space-y-4"><input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setEmail(e.target.value)} required /><input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setPassword(e.target.value)} required /><button class="w-full bg-teal-500 py-4 rounded-2xl font-black shadow-2xl uppercase tracking-widest">{mode === 'login' ? 'Login' : 'Join'}</button></form><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-10 text-xs font-bold underline opacity-80 decoration-teal-400 underline-offset-8">{mode === 'login' ? "New educator? Create an account" : "Back to Login"}</button></div>
             );
         }
 
