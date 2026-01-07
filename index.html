@@ -16,12 +16,7 @@
         .custom-scroll::-webkit-scrollbar { display: none; }
         .animate-fade-in { animation: fadeIn 0.3s ease-in; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        /* ADA Compliance: Visible Focus Rings */
-        :focus-visible { 
-            outline: 3px solid #0d9488 !important; 
-            outline-offset: 2px; 
-        }
+        :focus-visible { outline: 3px solid #0d9488 !important; outline-offset: 2px; }
     </style>
 </head>
 <body class="bg-slate-50 font-sans text-gray-900">
@@ -30,12 +25,10 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- SUPABASE CONFIG ---
         const SUPABASE_URL = 'https://aaiovfryjlcdijdyknik.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT';
         const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // --- HELPER: URL FORMATTER (Prevents Blank Pages) ---
         const formatUrl = (url) => {
             if (!url) return "#";
             return url.startsWith('http') ? url : `https://${url}`;
@@ -49,107 +42,70 @@
             const [recoveryMode, setRecoveryMode] = useState(false);
 
             useEffect(() => {
-                // Listen for Auth Events (Login, Logout, Password Recovery)
                 const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
                     if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
-                    
-                    if (session) {
-                        fetchProfile(session.user);
-                    } else {
-                        setUser(null);
-                        setProfile(null);
-                        setLoading(false);
-                    }
+                    if (session) fetchProfile(session.user);
+                    else { setUser(null); setProfile(null); setLoading(false); }
                 });
-
                 return () => subscription.unsubscribe();
             }, []);
 
             async function fetchProfile(authUser) {
                 let { data } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
-                
-                // Auto-create profile if missing
                 if (!data) {
-                    const { data: newP } = await supabase.from('profiles').insert([{ 
-                        id: authUser.id, 
-                        email: authUser.email, 
-                        role: 'teacher' 
-                    }]).select().single();
+                    const { data: newP } = await supabase.from('profiles').insert([{ id: authUser.id, email: authUser.email, role: 'teacher' }]).select().single();
                     data = newP;
                 }
-                
                 setUser(authUser);
                 setProfile(data);
                 setLoading(false);
             }
 
             if (recoveryMode) return <PasswordUpdateScreen setRecoveryMode={setRecoveryMode} />;
-            if (loading) return (
-                <div class="h-screen flex items-center justify-center text-teal-600" aria-busy="true">
-                    <i class="fas fa-seedling animate-bounce text-5xl"></i>
-                </div>
-            );
+            if (loading) return <div class="h-screen flex items-center justify-center text-teal-600" aria-busy="true"><i class="fas fa-seedling animate-bounce text-5xl"></i></div>;
             if (!user) return <AuthScreen />;
 
             return (
                 <div class="max-w-md mx-auto min-h-screen pb-24 bg-white relative shadow-2xl flex flex-col">
-                    {/* Header */}
                     <header class="bg-gradient-to-br from-teal-700 to-emerald-800 p-6 text-white rounded-b-[2.5rem] shadow-lg">
                         <div class="flex justify-between items-center mb-6">
                             <div class="flex items-center gap-2">
                                 <i class="fas fa-leaf text-teal-300" aria-hidden="true"></i>
                                 <span class="text-xl font-black italic uppercase tracking-tight">Growing Minds</span>
                             </div>
-                            <button 
-                                onClick={() => supabase.auth.signOut()} 
-                                aria-label="Sign out"
-                                class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20 focus:ring-2 focus:ring-white"
-                            >Sign Out</button>
+                            <button onClick={() => supabase.auth.signOut()} class="text-[10px] bg-white/10 px-3 py-1 rounded-full border border-white/20">Sign Out</button>
                         </div>
                         <div class="flex items-center gap-4">
-                            <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 text-xl" aria-hidden="true">
-                                {profile?.role === 'admin' ? '👑' : '🧑‍🏫'}
-                            </div>
+                            <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 text-xl">{profile?.role === 'admin' ? '👑' : '🧑‍🏫'}</div>
                             <div>
-                                <p class="text-xs text-teal-100 font-medium italic">Educator Portal</p>
-                                <p class="font-bold text-lg leading-tight truncate w-48">{user.email.split('@')[0]}</p>
+                                <p class="text-xs text-teal-100 font-medium">Educator Portal</p>
+                                <p class="font-bold text-lg leading-tight truncate w-40">{user.email.split('@')[0]}</p>
                             </div>
                         </div>
                     </header>
 
-                    {/* Content Area */}
-                    <main class="flex-1 p-5 overflow-y-auto custom-scroll" role="main">
+                    <main class="flex-1 p-5 overflow-y-auto custom-scroll">
                         {activeTab === 'feed' && <CommunityFeed user={user} />}
                         {activeTab === 'library' && <LibraryView />}
                         {activeTab === 'messages' && <MessageView />}
                         {activeTab === 'admin' && profile?.role === 'admin' && <AdminPanel />}
                     </main>
 
-                    {/* Navigation */}
-                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg" aria-label="Main menu">
+                    <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex justify-around items-center py-3 shadow-lg">
                         <NavBtn icon="house" label="Home" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
                         <NavBtn icon="book-bookmark" label="Library" active={activeTab === 'library'} onClick={() => setActiveTab('library')} />
                         <NavBtn icon="comment-dots" label="Support" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
-                        {profile?.role === 'admin' && (
-                            <NavBtn icon="shield-halved" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />
-                        )}
+                        {profile?.role === 'admin' && <NavBtn icon="shield-halved" label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
                     </nav>
                 </div>
             );
         }
 
-        // --- SUB-COMPONENTS ---
-
         function NavBtn({ icon, label, active, onClick }) {
             return (
-                <button 
-                    onClick={onClick} 
-                    aria-label={label}
-                    aria-current={active ? 'page' : undefined}
-                    class={`flex flex-col items-center gap-1 transition-all p-2 rounded-xl ${active ? 'text-teal-700 scale-105' : 'text-gray-400 hover:text-teal-600'}`}
-                >
-                    <i class={`fas fa-${icon} text-lg`} aria-hidden="true"></i>
-                    <span class={`text-[10px] font-bold uppercase ${active ? 'opacity-100' : 'opacity-60'}`}>{label}</span>
+                <button onClick={onClick} aria-label={label} class={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${active ? 'text-teal-700 scale-105' : 'text-gray-400'}`}>
+                    <i class={`fas fa-${icon} text-lg`}></i>
+                    <span class="text-[10px] font-bold uppercase">{label}</span>
                 </button>
             );
         }
@@ -164,71 +120,42 @@
                 const { data } = await supabase.from('posts').select('*, profiles(email)').order('created_at', { ascending: false });
                 setPosts(data || []);
             };
-
             useEffect(() => { fetchPosts(); }, []);
 
             const handleUpload = async (e) => {
                 e.preventDefault();
-                if (!file || !content) return alert("Please select a photo and write a caption.");
+                if (!file || !content) return alert("Photo and caption required.");
                 setUploading(true);
-                
                 const fileName = `${Date.now()}-${file.name}`;
-                const { error: upErr } = await supabase.storage.from('post-image').upload(fileName, file);
-                
-                if (upErr) { alert(upErr.message); setUploading(false); return; }
-
+                await supabase.storage.from('post-image').upload(fileName, file);
                 const { data: { publicUrl } } = supabase.storage.from('post-image').getPublicUrl(fileName);
-                
-                const { error: postErr } = await supabase.from('posts').insert([{ 
-                    user_id: user.id, 
-                    content, 
-                    image_url: publicUrl 
-                }]);
-
-                if (!postErr) { setContent(''); setFile(null); fetchPosts(); }
+                await supabase.from('posts').insert([{ user_id: user.id, content, image_url: publicUrl }]);
+                setContent(''); setFile(null); fetchPosts();
                 setUploading(false);
             };
 
             return (
                 <div class="space-y-6 animate-fade-in">
                     <div class="bg-white p-4 rounded-2xl border-2 border-teal-50 shadow-sm">
-                        <textarea 
-                            aria-label="Post caption"
-                            placeholder="Share your Gardyn progress..." 
-                            class="w-full p-3 text-sm bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 mb-3 border border-slate-100" 
-                            value={content} 
-                            onChange={e => setContent(e.target.value)} 
-                        />
+                        <textarea placeholder="Share your progress..." class="w-full p-3 text-sm bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 mb-3 border border-slate-100" value={content} onChange={e => setContent(e.target.value)} />
                         <div class="flex items-center justify-between">
-                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold hover:bg-teal-100 focus-within:ring-2 focus-within:ring-teal-500">
-                                <i class="fas fa-camera mr-2"></i>
-                                {file ? "✓ Photo Ready" : "Add Photo"}
+                            <label class="cursor-pointer bg-teal-50 text-teal-800 px-4 py-2 rounded-xl text-xs font-bold hover:bg-teal-100">
+                                <i class="fas fa-camera mr-2"></i>{file ? "✓ Ready" : "Add Photo"}
                                 <input type="file" accept="image/*" class="sr-only" onChange={e => setFile(e.target.files[0])} />
                             </label>
-                            <button 
-                                onClick={handleUpload} 
-                                disabled={uploading} 
-                                class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-md disabled:bg-slate-300"
-                            >
-                                {uploading ? 'Posting...' : 'Share Update'}
+                            <button onClick={handleUpload} disabled={uploading} class="bg-teal-700 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-md disabled:bg-slate-300">
+                                {uploading ? 'Posting...' : 'Share'}
                             </button>
                         </div>
                     </div>
-
                     {posts.map(post => (
                         <article key={post.id} class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden mb-6">
                             <div class="p-4 flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-[10px]" aria-hidden="true">
-                                    {post.profiles?.email ? post.profiles.email[0].toUpperCase() : 'T'}
-                                </div>
+                                <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-[10px]">{post.profiles?.email?.[0].toUpperCase()}</div>
                                 <p class="text-xs font-bold text-gray-800">{post.profiles?.email.split('@')[0]}</p>
                             </div>
-                            <img 
-                                src={post.image_url} 
-                                alt={`Gardyn update by teacher: ${post.content}`} 
-                                class="w-full h-64 object-cover bg-slate-100" 
-                            />
-                            <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed">{post.content}</p></div>
+                            <img src={post.image_url} alt={post.content} class="w-full h-64 object-cover bg-slate-50" />
+                            <div class="p-4"><p class="text-sm text-gray-700 leading-relaxed font-medium">{post.content}</p></div>
                         </article>
                     ))}
                 </div>
@@ -238,25 +165,15 @@
         function LibraryView() {
             const [res, setRes] = useState([]);
             useEffect(() => { supabase.from('resources').select('*').then(({ data }) => setRes(data || [])); }, []);
-
             return (
                 <section class="space-y-4">
-                    <h2 class="text-xl font-bold text-gray-900">Resource Hub</h2>
-                    {res.length === 0 && <p class="text-sm text-gray-400 italic">Links will appear here once added by Leads.</p>}
+                    <h2 class="text-xl font-bold text-gray-900 px-1">Resource Hub</h2>
                     {res.map(r => (
-                        <a 
-                            href={formatUrl(r.url)} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            key={r.id} 
-                            class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-teal-400 transition focus:ring-2 focus:ring-teal-500 group"
-                        >
-                            <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-lg flex items-center justify-center group-hover:bg-teal-700 group-hover:text-white transition-colors">
-                                <i class="fas fa-file-lines"></i>
-                            </div>
+                        <a href={formatUrl(r.url)} target="_blank" rel="noopener noreferrer" key={r.id} class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-teal-400 focus:ring-2 focus:ring-teal-500 group transition-all">
+                            <div class="w-10 h-10 bg-teal-50 text-teal-700 rounded-lg flex items-center justify-center group-hover:bg-teal-700 group-hover:text-white transition-colors"><i class="fas fa-file-lines"></i></div>
                             <div class="flex-1 text-left">
-                                <p class="font-bold text-sm text-gray-900">{r.title}</p>
-                                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{r.category}</p>
+                                <p class="font-bold text-sm text-gray-900 leading-tight">{r.title}</p>
+                                <p class="text-[10px] text-gray-500 font-bold uppercase mt-1">{r.category}</p>
                             </div>
                             <i class="fas fa-external-link-alt text-xs text-slate-300"></i>
                         </a>
@@ -267,12 +184,12 @@
 
         function MessageView() {
             return (
-                <section class="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+                <section class="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 shadow-inner">
                     <h2 class="text-xl font-bold text-emerald-900">Support Desk</h2>
-                    <p class="text-sm text-emerald-700 mt-2 mb-6 leading-relaxed">Questions about your yCubes or Kelby? Send a message to the project leads.</p>
+                    <p class="text-sm text-emerald-700 mt-2 mb-6 leading-relaxed">Questions about your yCubes or setup? Send us a message.</p>
                     <form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4">
-                        <input name="name" aria-label="Your name" placeholder="Full Name" class="w-full p-3 rounded-xl border-none text-sm shadow-inner" required />
-                        <textarea name="message" aria-label="Message" class="w-full p-4 rounded-2xl border-none h-32 text-sm shadow-inner" placeholder="How can we help?" required></textarea>
+                        <input name="name" placeholder="Full Name" class="w-full p-3 rounded-xl border-none text-sm shadow-sm" required />
+                        <textarea name="message" class="w-full p-4 rounded-2xl border-none h-32 text-sm shadow-sm" placeholder="How can we help?" required></textarea>
                         <button class="w-full bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-emerald-800 transition">Send Message</button>
                     </form>
                 </section>
@@ -281,48 +198,70 @@
 
         function AdminPanel() {
             const [users, setUsers] = useState([]);
+            const [posts, setPosts] = useState([]);
             const [newRes, setNewRes] = useState({ title: '', category: 'General', type: 'PDF', url: '' });
             
-            const refresh = () => supabase.from('profiles').select('*').then(({ data }) => setUsers(data || []));
-            useEffect(() => refresh(), []);
+            const refreshData = async () => {
+                const { data: u } = await supabase.from('profiles').select('*');
+                const { data: p } = await supabase.from('posts').select('*, profiles(email)').order('created_at', { ascending: false });
+                setUsers(u || []);
+                setPosts(p || []);
+            };
+            
+            useEffect(() => { refreshData(); }, []);
 
             const addRes = async (e) => {
                 e.preventDefault();
-                // Force URL protocol check during entry
                 const safeUrl = newRes.url.startsWith('http') ? newRes.url : `https://${newRes.url}`;
-                const { error } = await supabase.from('resources').insert([{ ...newRes, url: safeUrl }]);
-                if (error) alert(error.message);
-                else {
-                    setNewRes({ title: '', category: 'General', type: 'PDF', url: '' });
-                    alert("Added to Library!");
+                await supabase.from('resources').insert([{ ...newRes, url: safeUrl }]);
+                setNewRes({ title: '', category: 'General', type: 'PDF', url: '' });
+                alert("Resource Added!");
+            };
+
+            const deletePost = async (id) => {
+                if(confirm("Permanently delete this post?")) {
+                    await supabase.from('posts').delete().eq('id', id);
+                    refreshData();
                 }
             };
 
             return (
-                <div class="space-y-8 animate-fade-in">
+                <div class="space-y-8 animate-fade-in pb-10">
                     <div class="bg-white p-5 rounded-2xl border-2 border-dashed border-teal-200">
-                        <h3 class="font-bold text-sm mb-4 text-teal-800 uppercase tracking-widest">Post Library Resource</h3>
+                        <h3 class="font-bold text-sm mb-4 text-teal-800 uppercase tracking-widest">Post Hub Resource</h3>
                         <form onSubmit={addRes} class="space-y-3">
-                            <input aria-label="Resource title" placeholder="Title (e.g. Planting Guide)" class="w-full p-2 bg-slate-50 rounded border" value={newRes.title} onChange={e => setNewRes({...newRes, title: e.target.value})} required />
-                            <input aria-label="Resource URL" placeholder="Link URL (e.g. drive.google.com/...)" class="w-full p-2 bg-slate-50 rounded border" value={newRes.url} onChange={e => setNewRes({...newRes, url: e.target.value})} required />
+                            <input placeholder="Title" class="w-full p-2 bg-slate-50 rounded border text-sm" value={newRes.title} onChange={e => setNewRes({...newRes, title: e.target.value})} required />
+                            <input placeholder="URL" class="w-full p-2 bg-slate-50 rounded border text-sm" value={newRes.url} onChange={e => setNewRes({...newRes, url: e.target.value})} required />
                             <button class="w-full bg-teal-700 text-white py-2 rounded-lg font-bold text-xs">Add to Hub</button>
                         </form>
                     </div>
-                    
-                    <div class="space-y-2">
-                        <h3 class="font-bold text-xs text-gray-500 uppercase tracking-widest pl-1">Teacher Management</h3>
-                        <div class="bg-white border border-slate-200 rounded-xl overflow-hidden divide-y">
+
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-xs text-gray-500 uppercase tracking-widest pl-1">Moderate Posts</h3>
+                        <div class="space-y-2">
+                            {posts.map(p => (
+                                <div key={p.id} class="bg-white border rounded-xl p-3 flex items-center justify-between shadow-sm">
+                                    <div class="flex items-center gap-3">
+                                        <img src={p.image_url} class="w-10 h-10 rounded object-cover border" />
+                                        <div class="overflow-hidden">
+                                            <p class="text-[10px] font-bold text-gray-800 truncate w-32">{p.profiles?.email}</p>
+                                            <p class="text-[9px] text-gray-400 truncate w-32">{p.content}</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => deletePost(p.id)} class="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"><i class="fas fa-trash-alt"></i></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-xs text-gray-500 uppercase tracking-widest pl-1">Teacher Access</h3>
+                        <div class="bg-white border rounded-xl divide-y">
                             {users.map(u => (
                                 <div key={u.id} class="flex items-center justify-between p-4">
-                                    <span class="text-xs font-bold text-gray-700 truncate w-40">{u.email}</span>
-                                    <select 
-                                        aria-label="Change user role"
-                                        value={u.role} 
-                                        onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refresh(); }}
-                                        class="text-[10px] border rounded p-1 font-bold text-teal-700 focus:ring-2 focus:ring-teal-500"
-                                    >
-                                        <option value="teacher">TEACHER</option>
-                                        <option value="admin">LEAD</option>
+                                    <span class="text-[10px] font-bold text-gray-700 truncate w-40">{u.email}</span>
+                                    <select value={u.role} onChange={async (e) => { await supabase.from('profiles').update({ role: e.target.value }).eq('id', u.id); refreshData(); }} class="text-[10px] border rounded p-1 font-bold text-teal-700">
+                                        <option value="teacher">TEACHER</option><option value="admin">LEAD</option>
                                     </select>
                                 </div>
                             ))}
@@ -339,39 +278,28 @@
 
             const handleAuth = async (e) => {
                 e.preventDefault();
-                const { error } = mode === 'login' 
-                    ? await supabase.auth.signInWithPassword({ email, password }) 
-                    : await supabase.auth.signUp({ email, password });
+                const { error } = mode === 'login' ? await supabase.auth.signInWithPassword({ email, password }) : await supabase.auth.signUp({ email, password });
                 if (error) alert(error.message);
             };
 
             const handleForgot = async () => {
-                if (!email) return alert("Please type your email address first.");
-                const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                    redirectTo: window.location.href, 
-                });
-                if (error) alert(error.message);
-                else alert("Reset link sent to your Gmail!");
+                if (!email) return alert("Enter email first.");
+                const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
+                if (error) alert(error.message); else alert("Reset link sent!");
             };
 
             return (
                 <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
-                    <i class="fas fa-seedling text-5xl mb-6 text-teal-300" aria-hidden="true"></i>
+                    <i class="fas fa-seedling text-5xl mb-6 text-teal-300"></i>
                     <h1 class="text-3xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
                     <form onSubmit={handleAuth} class="w-full max-w-xs space-y-4">
-                        <input type="email" aria-label="Email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setEmail(e.target.value)} required />
-                        <input type="password" aria-label="Password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setPassword(e.target.value)} required />
-                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl hover:bg-teal-400 transition active:scale-95">
-                            {mode === 'login' ? 'Login' : 'Join Project'}
-                        </button>
+                        <input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400 outline-none" onChange={e => setEmail(e.target.value)} required />
+                        <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400 outline-none" onChange={e => setPassword(e.target.value)} required />
+                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl hover:bg-teal-400 transition active:scale-95">{mode === 'login' ? 'Login' : 'Join'}</button>
                     </form>
-                    <div class="mt-8 flex flex-col gap-4 items-center">
-                        <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="text-xs underline decoration-teal-400 underline-offset-4">
-                            {mode === 'login' ? "New educator? Create an account" : "Back to Login"}
-                        </button>
-                        <button onClick={handleForgot} class="text-[10px] uppercase tracking-widest font-bold opacity-60 hover:opacity-100">
-                            Forgot Password?
-                        </button>
+                    <div class="mt-8 flex flex-col gap-4 items-center opacity-70">
+                        <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="text-xs underline"> {mode === 'login' ? "New educator? Create account" : "Back to login"}</button>
+                        <button onClick={handleForgot} class="text-[10px] uppercase font-bold tracking-widest">Forgot Password?</button>
                     </div>
                 </div>
             );
@@ -383,17 +311,14 @@
                 e.preventDefault();
                 const { error } = await supabase.auth.updateUser({ password: newPass });
                 if (error) alert(error.message);
-                else {
-                    alert("Password updated successfully!");
-                    setRecoveryMode(false);
-                }
+                else { alert("Saved!"); setRecoveryMode(false); }
             };
             return (
                 <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
-                    <h2 class="text-2xl font-bold mb-6 italic uppercase">Create New Password</h2>
+                    <h2 class="text-2xl font-bold mb-6 italic uppercase">Set New Password</h2>
                     <form onSubmit={handleUpdate} class="w-full max-w-xs space-y-4">
-                        <input type="password" placeholder="New Password" class="w-full p-4 rounded-2xl text-gray-900 focus:ring-4 focus:ring-teal-400" onChange={e => setNewPass(e.target.value)} required />
-                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl">Save & Login</button>
+                        <input type="password" placeholder="New Password" class="w-full p-4 rounded-2xl text-gray-900" onChange={e => setNewPass(e.target.value)} required />
+                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-bold shadow-2xl">Update Password</button>
                     </form>
                 </div>
             );
