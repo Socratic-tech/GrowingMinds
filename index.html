@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         .custom-scroll::-webkit-scrollbar { display: none; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
@@ -21,8 +21,11 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
+        
+        // --- CONFIGURATION ---
         const SUPABASE_URL = 'https://aaiovfryjlcdijdyknik.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT';
+        // Ensure this is your valid Anon Key
+        const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT'; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function App() {
@@ -211,7 +214,7 @@
             );
         }
 
-        // --- FEED, LIBRARY, ADMIN (KEEP PREVIOUS CODE) ---
+        // --- FEED, LIBRARY, ADMIN (EXISTING) ---
         function CommunityFeed({ user, isAdmin }) {
             const [posts, setPosts] = useState([]);
             const [content, setContent] = useState('');
@@ -393,19 +396,58 @@
             );
         }
 
-        function MessageView() { return <div class="bg-emerald-50 p-8 rounded-[2.5rem] border border-emerald-100"><h2 class="text-xl font-bold text-emerald-900 mb-4 flex items-center gap-3"><i class="fas fa-comment"></i> Support</h2><form action="https://formspree.io/f/xykzrjlz" method="POST" class="space-y-4"><input name="email" placeholder="Your Email" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm" required /><textarea name="message" class="w-full p-4 rounded-2xl border-none shadow-sm text-sm h-32" placeholder="Help us help you..." required></textarea><button class="w-full bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg uppercase tracking-widest text-xs">Send Message</button></form></div>; }
         function PendingScreen({ email, isNew }) { return <div class="h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center animate-fade-in"><div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-6 shadow-inner animate-pulse"><i class="fas fa-user-shield"></i></div><h2 class="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">{isNew ? 'Creating Profile...' : 'Access Restricted'}</h2><p class="text-xs text-slate-500 mb-8 leading-relaxed">Hi <strong>{email.split('@')[0]}</strong>, an admin is verifying your account. Refresh shortly.</p><button onClick={() => supabaseClient.auth.signOut()} class="text-teal-700 font-bold text-[10px] underline uppercase tracking-widest">Sign Out</button></div>; }
+
+        // --- AUTH SCREEN (UPDATED WITH GOOGLE) ---
         function AuthScreen() {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [mode, setMode] = useState('login');
+
             const handleAuth = async (e) => {
                 e.preventDefault();
-                const { error } = mode === 'login' ? await supabaseClient.auth.signInWithPassword({ email, password }) : await supabaseClient.auth.signUp({ email, password });
+                const { error } = mode === 'login' 
+                    ? await supabaseClient.auth.signInWithPassword({ email, password }) 
+                    : await supabaseClient.auth.signUp({ email, password });
                 if (error) alert(error.message);
             };
+
+            const signInWithGoogle = async () => {
+                const { data, error } = await supabaseClient.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: window.location.href // Returns user to this page
+                    }
+                });
+                if (error) alert(error.message);
+            };
+
             return (
-                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white"><i class="fas fa-seedling text-7xl mb-6 text-teal-300"></i><h1 class="text-4xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1><form onSubmit={handleAuth} class="w-full max-w-xs space-y-4"><input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setEmail(e.target.value)} required /><input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setPassword(e.target.value)} required /><button class="w-full bg-teal-500 py-4 rounded-2xl font-black shadow-2xl uppercase tracking-widest">{mode === 'login' ? 'Login' : 'Join'}</button></form><button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-10 text-xs font-bold underline opacity-80 decoration-teal-400 underline-offset-8">{mode === 'login' ? "New educator? Create an account" : "Back to Login"}</button></div>
+                <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
+                    <i class="fas fa-seedling text-7xl mb-6 text-teal-300"></i>
+                    <h1 class="text-4xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
+                    
+                    <form onSubmit={handleAuth} class="w-full max-w-xs space-y-4">
+                        {/* GOOGLE BUTTON ADDED HERE */}
+                        <button type="button" onClick={signInWithGoogle} class="w-full bg-red-600 hover:bg-red-700 text-white p-4 rounded-2xl font-bold shadow-2xl uppercase tracking-widest flex items-center justify-center gap-3">
+                            <i class="fab fa-google text-lg"></i> Sign in with Google
+                        </button>
+
+                        <div class="relative py-2 flex items-center">
+                            <div class="flex-grow border-t border-teal-700"></div>
+                            <span class="flex-shrink mx-4 text-teal-300 text-[10px] uppercase font-bold tracking-widest">Or with email</span>
+                            <div class="flex-grow border-t border-teal-700"></div>
+                        </div>
+
+                        <input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setEmail(e.target.value)} required />
+                        <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setPassword(e.target.value)} required />
+                        <button class="w-full bg-teal-500 py-4 rounded-2xl font-black shadow-2xl uppercase tracking-widest">{mode === 'login' ? 'Login' : 'Join'}</button>
+                    </form>
+                    
+                    <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-10 text-xs font-bold underline opacity-80 decoration-teal-400 underline-offset-8">
+                        {mode === 'login' ? "New educator? Create an account" : "Back to Login"}
+                    </button>
+                </div>
             );
         }
 
