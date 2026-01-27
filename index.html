@@ -28,14 +28,14 @@
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function App() {
-             [user, setUser] = useState(null);
-             [profile, setProfile] = useState(null);
-             [activeTab, setActiveTab] = useState('feed');
-             [loading, setLoading] = useState(true);
-             [pendingCount, setPendingCount] = useState(0);
+            const [user, setUser] = useState(null);
+            const [profile, setProfile] = useState(null);
+            const [activeTab, setActiveTab] = useState('feed');
+            const [loading, setLoading] = useState(true);
+            const [pendingCount, setPendingCount] = useState(0);
 
-             fetchProfile = async (authUser) => {
-                 { data } = await supabaseClient.from('profiles').select('*').eq('id', authUser.id).single();
+            const fetchProfile = async (authUser) => {
+                const { data } = await supabaseClient.from('profiles').select('*').eq('id', authUser.id).single();
                 if (data) {
                     setProfile(data);
                     if (data.role === 'admin') fetchPendingCount();
@@ -44,58 +44,24 @@
                 setLoading(false);
             };
 
-             fetchPendingCount = async () => {
-                 { count } = await supabaseClient.from('profiles').select('*', { count: 'exact', head: true }).eq('is_approved', false);
+            const fetchPendingCount = async () => {
+                const { count } = await supabaseClient.from('profiles').select('*', { count: 'exact', head: true }).eq('is_approved', false);
                 setPendingCount(count || 0);
             };
 
-            const checkSession = async () => {
-        // This line grabs the token from the URL (the Google bounce)
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setSession(session);
-          fetchUserProfile(session.user.id);
-        } else {
-          setLoading(false);
-        }
-    };
-
-    checkSession();
-
-    // Listen for changes (Sign in, Sign out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        fetchUserProfile(session.user.id);
-      } else {
-        setLoading(false);
-        setProfile(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // ------------------------------------------------
-  // 3. YOUR HELPER FUNCTIONS (fetchUserProfile, etc)
-  // ------------------------------------------------
-  const fetchUserProfile = async (userId) => {
-     // ... existing code ...
-  };
-
-  // ------------------------------------------------
-  // 4. THE UI (The return statement)
-  // ------------------------------------------------
-  return (
-    // ... existing HTML/JSX ...
-  );
-}
+            useEffect(() => {
+                const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+                    if (session) fetchProfile(session.user);
+                    else { setUser(null); setProfile(null); setLoading(false); }
+                });
+                return () => subscription.unsubscribe();
+            }, []);
 
             if (loading) return <div class="h-screen flex items-center justify-center text-teal-600"><i class="fas fa-seedling animate-bounce text-5xl"></i></div>;
             if (!user) return <AuthScreen />;
             if (!profile || profile.is_approved !== true) return <PendingScreen email={user.email} isNew={!profile} />;
 
-             isAdmin = profile.role === 'admin';
+            const isAdmin = profile.role === 'admin';
 
             return (
                 <div class="max-w-md mx-auto min-h-screen bg-white relative shadow-2xl flex flex-col">
