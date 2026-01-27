@@ -24,7 +24,6 @@
         
         // --- CONFIGURATION ---
         const SUPABASE_URL = 'https://aaiovfryjlcdijdyknik.supabase.co';
-        // Ensure this is your valid Anon Key
         const SUPABASE_KEY = 'sb_publishable_cFHXexx3iNPEOWSFZ0IAxQ_h6MuktWT'; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -398,7 +397,7 @@
 
         function PendingScreen({ email, isNew }) { return <div class="h-screen bg-slate-50 flex flex-col items-center justify-center p-10 text-center animate-fade-in"><div class="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-6 shadow-inner animate-pulse"><i class="fas fa-user-shield"></i></div><h2 class="text-xl font-black text-slate-800 uppercase tracking-tighter mb-2">{isNew ? 'Creating Profile...' : 'Access Restricted'}</h2><p class="text-xs text-slate-500 mb-8 leading-relaxed">Hi <strong>{email.split('@')[0]}</strong>, an admin is verifying your account. Refresh shortly.</p><button onClick={() => supabaseClient.auth.signOut()} class="text-teal-700 font-bold text-[10px] underline uppercase tracking-widest">Sign Out</button></div>; }
 
-        // --- AUTH SCREEN (UPDATED WITH GOOGLE) ---
+        // --- AUTH SCREEN (UPDATED) ---
         function AuthScreen() {
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
@@ -415,12 +414,28 @@
             const signInWithGoogle = async () => {
                 const { data, error } = await supabaseClient.auth.signInWithOAuth({
                     provider: 'google',
-                    options: {
-                        redirectTo: window.location.href // Returns user to this page
-                    }
+                    options: { redirectTo: window.location.href }
                 });
                 if (error) alert(error.message);
             };
+
+            // --- MAGIC LINK HANDLER ---
+            const sendMagicLink = async () => {
+                if (!email) return alert("Please enter your email in the box first.");
+                
+                const { error } = await supabaseClient.auth.signInWithOtp({
+                    email: email,
+                    options: {
+                        emailRedirectTo: window.location.href, // Sends them back to this exact page
+                    },
+                })
+                
+                if (error) {
+                    alert('Error: ' + error.message)
+                } else {
+                    alert('Magic Link sent! Check your email inbox.')
+                }
+            }
 
             return (
                 <div class="min-h-screen bg-teal-900 flex flex-col items-center justify-center p-8 text-white">
@@ -428,7 +443,6 @@
                     <h1 class="text-4xl font-black italic mb-10 uppercase tracking-tighter">Growing Minds</h1>
                     
                     <form onSubmit={handleAuth} class="w-full max-w-xs space-y-4">
-                        {/* GOOGLE BUTTON ADDED HERE */}
                         <button type="button" onClick={signInWithGoogle} class="w-full bg-red-600 hover:bg-red-700 text-white p-4 rounded-2xl font-bold shadow-2xl uppercase tracking-widest flex items-center justify-center gap-3">
                             <i class="fab fa-google text-lg"></i> Sign in with Google
                         </button>
@@ -441,10 +455,18 @@
 
                         <input type="email" placeholder="Email" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setEmail(e.target.value)} required />
                         <input type="password" placeholder="Password" class="w-full p-4 rounded-2xl text-gray-900 outline-none shadow-2xl" onChange={e => setPassword(e.target.value)} required />
+                        
                         <button class="w-full bg-teal-500 py-4 rounded-2xl font-black shadow-2xl uppercase tracking-widest">{mode === 'login' ? 'Login' : 'Join'}</button>
                     </form>
                     
-                    <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-10 text-xs font-bold underline opacity-80 decoration-teal-400 underline-offset-8">
+                    {/* --- MAGIC LINK BUTTON --- */}
+                    <div class="w-full max-w-xs mt-6">
+                        <button type="button" onClick={sendMagicLink} class="w-full py-3 bg-teal-800/50 hover:bg-teal-800 border-2 border-teal-700 rounded-2xl font-bold text-[10px] uppercase tracking-widest text-teal-200 transition-colors">
+                            <i class="fas fa-magic mr-2"></i> Trouble? Email me a Login Link
+                        </button>
+                    </div>
+
+                    <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} class="mt-8 text-xs font-bold underline opacity-80 decoration-teal-400 underline-offset-8">
                         {mode === 'login' ? "New educator? Create an account" : "Back to Login"}
                     </button>
                 </div>
