@@ -6,9 +6,14 @@ import { Button } from "./button";
 export default function RichEditor({ value, onChange }) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        link: false, // disable built-in link to avoid duplicates
+      }),
+
       Link.configure({
-        HTMLAttributes: { class: "text-teal-600 underline" },
+        HTMLAttributes: {
+          class: "text-teal-600 underline",
+        },
       }),
     ],
     content: value,
@@ -22,7 +27,6 @@ export default function RichEditor({ value, onChange }) {
   return (
     <div className="space-y-2">
 
-      {/* Toolbar */}
       <div className="flex flex-wrap gap-2 border rounded-md p-2 bg-gray-50">
 
         <Button
@@ -67,13 +71,12 @@ export default function RichEditor({ value, onChange }) {
         >
           Link
         </Button>
+
       </div>
 
-      {/* Editor box */}
       <div className="border rounded-lg p-3 min-h-[120px]">
         <EditorContent editor={editor} />
       </div>
     </div>
   );
 }
-

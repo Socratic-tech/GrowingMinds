@@ -1,70 +1,53 @@
-import { useState } from "react";
-import { supabase } from "../supabase/client";
-import { Button } from "../components/ui/button";
-import { useToast } from "../components/ui/toast";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "./context/AuthProvider";
 
-export default function ResetPassword() {
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { showToast } = useToast();
+import ShellLayout from "./components/layout/ShellLayout";
+import AuthPage from "./pages/Auth";
+import Feed from "./pages/Feed";
+import QA from "./pages/QA";
+import Library from "./pages/Library";
+import Admin from "./pages/Admin";
+import Pending from "./pages/Pending";
+import ResetPassword from "./pages/ResetPassword";
 
-  async function handleReset(e) {
-    e.preventDefault();
+export default function App() {
+  const { user, profile, loading } = useAuth();
+  const location = useLocation();
 
-    if (password !== confirm) {
-      showToast({ title: "Passwords do not match", type: "error" });
-      return;
-    }
+  if (loading) return <div>Loading...</div>;
 
-    setLoading(true);
+  // Detect password recovery mode
+  const params = new URLSearchParams(window.location.search);
+  const type = params.get("type");
 
-    const { error } = await supabase.auth.updateUser({ password });
-
-    if (error) {
-      showToast({
-        title: "Reset failed",
-        description: error.message,
-        type: "error",
-      });
-    } else {
-      showToast({
-        title: "Password Updated",
-        description: "You may now log in with your new password.",
-        type: "success",
-      });
-
-      window.location.href = "/login";
-    }
-
-    setLoading(false);
+  if (location.pathname === "/reset-password" && type === "recovery") {
+    return <ResetPassword />;
   }
 
+  if (!user) return <AuthPage />;
+
+  if (profile && profile.is_approved !== true) {
+    return <Pending />;
+  }
+
+  const isAdmin = profile?.role === "admin";
+
   return (
-    <div className="flex flex-col items-center justify-center h-full p-8 space-y-4">
-      <h1 className="text-2xl font-bold text-teal-700">Reset Password</h1>
+    <Routes>
 
-      <form onSubmit={handleReset} className="w-full max-w-xs space-y-3">
-        <input
-          type="password"
-          placeholder="New password"
-          className="w-full p-3 border rounded-lg"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+      {/* App shell */}
+      <Route element={<ShellLayout />}>
+        <Route path="/" element={<Navigate to="/feed" />} />
+        <Route path="/feed" element={<Feed />} />
+        <Route path="/qa" element={<QA />} />
+        <Route path="/library" element={<Library />} />
+        {isAdmin && <Route path="/admin" element={<Admin />} />}
+      </Route>
 
-        <input
-          type="password"
-          placeholder="Confirm password"
-          className="w-full p-3 border rounded-lg"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-        />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
-        <Button className="w-full bg-teal-600 hover:bg-teal-700">
-          {loading ? "Updating..." : "Reset Password"}
-        </Button>
-      </form>
-    </div>
+      {/* fallback */}
+      <Route path="*" element={<Navigate to="/feed" />} />
+    </Routes>
   );
 }
