@@ -1,25 +1,18 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Link from "@tiptap/extension-link";
-import { Button } from "./button";
 
 export default function RichEditor({ value, onChange }) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        link: false, // disable built-in link to avoid duplicates
-      }),
-
-      Link.configure({
-        HTMLAttributes: {
-          class: "text-teal-600 underline",
-        },
+        heading: false,
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
       }),
     ],
     content: value,
-    onUpdate({ editor }) {
-      onChange(editor.getHTML());
-    },
+    onUpdate: ({ editor }) => onChange(editor.getHTML()),
   });
 
   if (!editor) return null;
@@ -27,56 +20,49 @@ export default function RichEditor({ value, onChange }) {
   return (
     <div className="space-y-2">
 
-      <div className="flex flex-wrap gap-2 border rounded-md p-2 bg-gray-50">
-
-        <Button
-          type="button"
-          className="px-2 py-1 text-sm bg-gray-200 hover:bg-gray-300"
+      {/* Toolbar */}
+      <div className="flex gap-2 bg-gray-100 border border-gray-300 rounded-xl p-2 shadow-inner">
+        
+        <Tool
+          active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
-          <strong>B</strong>
-        </Button>
+          <b>B</b>
+        </Tool>
 
-        <Button
-          type="button"
-          className="px-2 py-1 text-sm bg-gray-200 hover:bg-gray-300 italic"
+        <Tool
+          active={editor.isActive("italic")}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
-          I
-        </Button>
-
-        <Button
-          type="button"
-          className="px-2 py-1 text-sm bg-gray-200 hover:bg-gray-300"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          • List
-        </Button>
-
-        <Button
-          type="button"
-          className="px-2 py-1 text-sm bg-gray-200 hover:bg-gray-300"
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          1.
-        </Button>
-
-        <Button
-          type="button"
-          className="px-2 py-1 text-sm bg-gray-200 hover:bg-gray-300"
-          onClick={() => {
-            const url = prompt("Enter link URL");
-            if (url) editor.chain().focus().setLink({ href: url }).run();
-          }}
-        >
-          Link
-        </Button>
+          <i>I</i>
+        </Tool>
 
       </div>
 
-      <div className="border rounded-lg p-3 min-h-[120px]">
+      {/* Editor Box */}
+      <div className="bg-white border border-gray-300 rounded-xl p-3 shadow-inner min-h-[100px]">
         <EditorContent editor={editor} />
       </div>
+
     </div>
+  );
+}
+
+function Tool({ children, onClick, active }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`
+        w-8 h-8 flex items-center justify-center rounded-lg text-sm shadow-sm transition
+        ${
+          active
+            ? "bg-teal-700 text-white shadow"
+            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+        }
+      `}
+    >
+      {children}
+    </button>
   );
 }

@@ -1,12 +1,20 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   content: [
     "./index.html",
-    "./src/**/*.{js,jsx}"
+    "./src/**/*.{js,jsx,ts,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        brand: {
+          light: "#0d9488",  // teal-600
+          DEFAULT: "#0f766e", // teal-700
+          dark: "#115e59",    // teal-800
+          deep: "#134e4a",    // teal-900
+        }
+      }
+    },
   },
-  plugins: [
-  require("@tailwindcss/typography"),
-]
+  plugins: [],
+};
