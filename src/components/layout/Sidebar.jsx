@@ -42,11 +42,11 @@ export default function Sidebar({ navigate, isAdmin }) {
 
       {/* LOGO */}
       <img
-        src={`${import.meta.env.BASE_URL}projectlogo.jpg`}
+  src="https://aaiovfryjlcdijdyknik.supabase.co/storage/v1/object/public/branding/projectlogo.png"
+  alt="Growing Minds logo"
+  className="w-28 mx-auto mt-4 opacity-95 object-contain"
+/>
 
-        alt="Growing Minds logo"
-        className="w-32 mx-auto mt-4 opacity-95"
-      />
 
       {/* NAVIGATION */}
       <ul className="flex flex-col gap-1 mt-6">

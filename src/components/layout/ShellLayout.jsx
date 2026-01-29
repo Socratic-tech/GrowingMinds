@@ -37,7 +37,7 @@ export default function ShellLayout() {
       {/* DESKTOP SIDEBAR */}
       {!isMobile && <Sidebar navigate={navigate} isAdmin={isAdmin} />}
 
-      {/* MAIN CONTENT AREA */}
+      {/* MAIN LAYOUT */}
       <div className="flex-1 max-w-3xl mx-auto flex flex-col">
 
         {/* HEADER */}
@@ -59,12 +59,12 @@ export default function ShellLayout() {
 
             {/* MOBILE LOGO */}
             {isMobile && (
-              <img
-                src={`${import.meta.env.BASE_URL}projectlogo.jpg`}
+             <img
+  src="https://aaiovfryjlcdijdyknik.supabase.co/storage/v1/object/public/branding/projectlogo.png"
+  alt="Growing Minds logo"
+  className="w-28 mx-auto mt-4 opacity-95 object-contain"
+/>
 
-                alt="Growing Minds logo"
-                className="w-20 opacity-95 mt-2"
-              />
             )}
           </div>
         </header>
