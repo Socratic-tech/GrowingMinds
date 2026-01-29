@@ -42,7 +42,7 @@ export default function Sidebar({ navigate, isAdmin }) {
 
       {/* LOGO */}
       <img
-        src="/projectlogo.jpg"
+        src="projectlogo.jpg"
         alt="Growing Minds logo"
         className="w-32 mx-auto mt-4 opacity-95"
       />

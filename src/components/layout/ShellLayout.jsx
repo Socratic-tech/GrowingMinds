@@ -60,7 +60,7 @@ export default function ShellLayout() {
             {/* MOBILE LOGO */}
             {isMobile && (
               <img
-                src="/projectlogo.jpg"
+                src="projectlogo.jpg"
                 alt="Growing Minds logo"
                 className="w-20 opacity-95 mt-2"
               />
