@@ -20,7 +20,7 @@ export default function Sidebar({ navigate, isAdmin }) {
       className="w-64 bg-white border-r border-gray-200 h-screen p-6 
                  flex flex-col gap-6 shadow-xl"
     >
-      {/* PROFILE SECTION */}
+      {/* PROFILE */}
       <div className="flex items-center gap-3">
         <div
           aria-hidden="true"
@@ -40,15 +40,22 @@ export default function Sidebar({ navigate, isAdmin }) {
         </div>
       </div>
 
-      {/* NAVIGATION ITEMS */}
-      <ul className="flex flex-col gap-1 mt-4">
+      {/* LOGO */}
+      <img
+        src="/projectlogo.jpg"
+        alt="Growing Minds logo"
+        className="w-32 mx-auto mt-4 opacity-95"
+      />
+
+      {/* NAVIGATION */}
+      <ul className="flex flex-col gap-1 mt-6">
         {items.map((item) => (
           <li key={item.path}>
             <button
               onClick={() => navigate(item.path)}
               aria-label={item.label}
               className="
-                flex items-center justify-start gap-3 w-full text-left
+                flex items-center gap-3 w-full text-left
                 p-3 rounded-2xl hover:bg-gray-100 
                 focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2
                 min-h-[44px]
