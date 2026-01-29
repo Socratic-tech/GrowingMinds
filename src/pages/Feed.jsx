@@ -41,11 +41,11 @@ export default function Feed() {
 
     if (imageFile) {
       const fileName = `${user.id}-${Date.now()}-${imageFile.name}`;
-      const upload = await supabase
+      const { error: uploadError } = await supabase
         .from("post-images")
         .upload(fileName, imageFile);
 
-      if (upload.error) {
+      if (uploadError) {
         showToast({ title: "Upload failed", type: "error" });
         setCreating(false);
         return;
@@ -81,34 +81,49 @@ export default function Feed() {
   return (
     <div className="space-y-10">
 
-      {/* Create Post */}
-      <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-200 space-y-6">
-        <h2 className="text-xl font-bold text-teal-800 flex items-center gap-2">
+      {/* CREATE POST CARD */}
+      <div
+        className="bg-white rounded-3xl lg:rounded-2xl p-6 shadow-xl border border-gray-200 
+                   space-y-6"
+      >
+        <h2 className="text-xl lg:text-2xl font-bold text-teal-800 flex items-center gap-2">
           Update the Garden 🌱
         </h2>
 
         <RichEditor value={content} onChange={setContent} />
 
+        {/* IMAGE UPLOAD */}
         <div className="space-y-1">
-          <label className="text-sm font-semibold text-gray-600">Add Image</label>
-
-          <label className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm shadow border border-gray-300 inline-block">
-            Choose File
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => setImageFile(e.target.files[0])}
-            />
+          <label className="text-sm lg:text-base font-semibold text-gray-600">
+            Add Image
           </label>
 
+          <label
+            htmlFor="post-image-upload"
+            className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 
+                       px-4 py-2 rounded-xl text-sm lg:text-base shadow border border-gray-300 
+                       inline-block focus-visible:ring-2 focus-visible:ring-teal-500"
+          >
+            Choose File
+          </label>
+
+          <input
+            id="post-image-upload"
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => setImageFile(e.target.files[0])}
+          />
+
           {imageFile && (
-            <p className="text-xs text-gray-500">{imageFile.name}</p>
+            <p className="text-xs lg:text-sm text-gray-500">{imageFile.name}</p>
           )}
         </div>
 
         <Button
-          className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 rounded-xl shadow-lg font-semibold"
+          aria-label="Post update"
+          className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 lg:py-4 
+                     rounded-xl shadow-lg font-semibold text-sm lg:text-base"
           onClick={createPost}
           disabled={creating}
         >
@@ -116,7 +131,7 @@ export default function Feed() {
         </Button>
       </div>
 
-      {/* Posts */}
+      {/* POSTS */}
       {loading ? (
         <p className="text-center text-gray-400">Loading feed…</p>
       ) : (
@@ -141,51 +156,73 @@ export default function Feed() {
 -------------------- */
 function PostCard({ post, user, isAdmin, onDelete }) {
   return (
-    <div className="bg-white p-6 rounded-3xl shadow-lg border border-gray-200 space-y-5">
-
+    <div
+      className="bg-white rounded-3xl lg:rounded-2xl p-6 shadow-lg 
+                 border border-gray-200 space-y-5"
+      role="region"
+      aria-label={`Post by ${post.profiles?.email}`}
+    >
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-full bg-teal-700 text-white flex items-center justify-center font-bold">
+
+        {/* Avatar */}
+        <div
+          aria-hidden="true"
+          className="w-10 h-10 rounded-full bg-teal-700 text-white flex items-center 
+                     justify-center font-bold text-sm"
+        >
           {post.profiles?.email?.charAt(0).toUpperCase()}
         </div>
 
+        {/* Author + Date */}
         <div className="flex flex-col">
-          <p className="font-semibold text-teal-800">
+          <p className="font-semibold text-teal-800 text-sm lg:text-base">
             {post.profiles?.email?.split("@")[0]}
           </p>
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] lg:text-xs text-gray-500">
             {new Date(post.created_at).toLocaleDateString()}
           </p>
         </div>
 
+        {/* ADMIN DELETE */}
         {isAdmin && (
           <button
-            onClick={onDelete}
-            className="ml-auto text-red-500 hover:text-red-700 text-lg"
+            aria-label="Delete post"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="ml-auto w-10 h-10 flex items-center justify-center rounded-xl
+                       text-red-500 hover:text-red-700 text-lg focus-visible:ring-2 
+                       focus-visible:ring-red-500"
           >
             🗑️
           </button>
         )}
       </div>
 
+      {/* CONTENT */}
       <div
-        className="prose prose-sm text-gray-800 leading-relaxed"
+        className="prose prose-sm lg:prose-base text-gray-800 leading-relaxed"
         dangerouslySetInnerHTML={{ __html: post.content }}
       />
 
+      {/* IMAGE */}
       {post.image_url && (
         <img
           src={post.image_url}
-          className="rounded-2xl border border-gray-200 shadow-md"
+          alt=""
+          className="rounded-3xl lg:rounded-2xl border border-gray-200 shadow-md"
         />
       )}
 
+      {/* COMMENTS */}
       <CommentSection postId={post.id} user={user} isAdmin={isAdmin} />
     </div>
   );
 }
 
 /* --------------------
-   COMMENTS
+   COMMENT SECTION
 -------------------- */
 function CommentSection({ postId, user, isAdmin }) {
   const { showToast } = useToast();
@@ -228,21 +265,32 @@ function CommentSection({ postId, user, isAdmin }) {
   return (
     <div className="space-y-4 pt-4 border-t border-gray-200">
 
+      {/* COMMENT LIST */}
       {comments.map((c) => (
         <div
           key={c.id}
-          className="bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-sm relative"
+          className="
+            bg-gray-50 p-3 rounded-3xl lg:rounded-2xl border border-gray-200 
+            shadow-sm relative
+          "
+          role="group"
+          aria-label={`Comment by ${c.profiles?.email}`}
         >
-          <p className="text-xs font-semibold text-teal-800">
+          <p className="text-xs lg:text-sm font-semibold text-teal-800">
             {c.profiles?.email?.split("@")[0]}
           </p>
 
-          <p className="text-sm text-gray-700">{c.content}</p>
+          <p className="text-sm lg:text-base text-gray-700">{c.content}</p>
 
           {isAdmin && (
             <button
+              aria-label="Delete comment"
               onClick={() => deleteComment(c.id)}
-              className="absolute top-2 right-3 text-red-400 hover:text-red-600 text-xs"
+              className="
+                absolute top-2 right-3 w-8 h-8 flex items-center justify-center 
+                rounded-xl text-red-400 hover:text-red-600 text-xs 
+                focus-visible:ring-2 focus-visible:ring-red-500
+              "
             >
               ✕
             </button>
@@ -250,16 +298,28 @@ function CommentSection({ postId, user, isAdmin }) {
         </div>
       ))}
 
+      {/* NEW COMMENT FORM */}
       <form onSubmit={submitComment} className="flex gap-2">
+        <label htmlFor={`comment-input-${postId}`} className="sr-only">
+          Add a comment
+        </label>
+
         <input
-          className="flex-1 p-2 rounded-xl border border-gray-300 text-sm shadow-inner focus:ring-2 focus:ring-teal-700"
+          id={`comment-input-${postId}`}
+          className="flex-1 p-2 rounded-xl lg:rounded-lg border border-gray-300 
+                     text-sm lg:text-base shadow-inner focus-visible:ring-2 
+                     focus-visible:ring-teal-700"
           placeholder="Write a comment…"
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
 
-        <Button className="bg-teal-700 hover:bg-teal-800 text-white rounded-xl px-4">
-          Send
+        <Button
+          aria-label="Submit comment"
+          className="bg-teal-700 hover:bg-teal-800 text-white rounded-xl px-4 
+                     w-12 h-12 flex items-center justify-center text-lg"
+        >
+          ➤
         </Button>
       </form>
     </div>

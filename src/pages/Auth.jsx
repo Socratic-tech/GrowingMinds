@@ -13,17 +13,15 @@ export default function AuthPage() {
   async function handleAuth(e) {
     e.preventDefault();
 
-    let result;
-    if (mode === "login") {
-      result = await supabase.auth.signInWithPassword({ email, password });
-    } else {
-      result = await supabase.auth.signUp({ email, password });
-    }
+    let response =
+      mode === "login"
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
 
-    if (result.error) {
+    if (response.error) {
       showToast({
         title: "Authentication failed",
-        description: result.error.message,
+        description: response.error.message,
         type: "error",
       });
     }
@@ -31,7 +29,7 @@ export default function AuthPage() {
 
   async function handleMagicLink() {
     if (!email) {
-      showToast({ title: "Enter an email first", type: "error" });
+      showToast({ title: "Enter an email address first", type: "error" });
       return;
     }
 
@@ -42,7 +40,7 @@ export default function AuthPage() {
 
     if (error) {
       showToast({
-        title: "Magic Link Error",
+        title: "Magic link error",
         description: error.message,
         type: "error",
       });
@@ -63,7 +61,7 @@ export default function AuthPage() {
 
     if (error) {
       showToast({
-        title: "Google Login Failed",
+        title: "Google login error",
         description: error.message,
         type: "error",
       });
@@ -71,61 +69,100 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-teal-800 to-teal-900 p-6">
+    <div className="min-h-screen flex flex-col items-center justify-center 
+                    bg-gradient-to-br from-teal-800 to-teal-900 p-6">
 
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 space-y-6 animate-fadeIn">
+      {/* AUTH CARD */}
+      <div className="
+        w-full max-w-sm bg-white rounded-3xl lg:rounded-2xl shadow-xl 
+        p-8 space-y-6 animate-fadeIn
+      ">
 
+        {/* LOGO + TITLE */}
         <div className="text-center space-y-2">
-          <div className="text-5xl">🌱</div>
-          <h1 className="text-2xl font-bold text-teal-800">Growing Minds</h1>
-          <p className="text-xs text-gray-500 uppercase">Educator Portal</p>
+          <div aria-hidden="true" className="text-5xl">🌱</div>
+
+          <h1 className="text-2xl lg:text-3xl font-bold text-teal-800 tracking-tight">
+            Growing Minds
+          </h1>
+
+          <p className="text-xs lg:text-sm text-gray-500 uppercase font-medium">
+            Educator Portal
+          </p>
         </div>
 
+        {/* GOOGLE BUTTON */}
         <Button
-          className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl shadow-md"
+          aria-label="Sign in with Google"
           onClick={handleGoogle}
+          className="w-full bg-red-500 hover:bg-red-600 text-white 
+                     rounded-xl lg:rounded-lg shadow-md min-h-[44px]"
         >
           Sign in with Google
         </Button>
 
+        {/* DIVIDER */}
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-gray-200"></div>
-          <span className="text-xs text-gray-400">OR</span>
+          <span className="text-xs lg:text-sm text-gray-400">OR</span>
           <div className="flex-1 h-px bg-gray-200"></div>
         </div>
 
+        {/* EMAIL / PASSWORD FORM */}
         <form onSubmit={handleAuth} className="space-y-4">
+
+          <label className="sr-only" htmlFor="email">
+            Email Address
+          </label>
           <input
+            id="email"
             type="email"
+            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl 
+                       shadow-inner text-sm lg:text-base focus-visible:ring-2 
+                       focus-visible:ring-teal-700"
             placeholder="Email address"
-            className="w-full p-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-teal-700 shadow-inner"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
 
+          <label className="sr-only" htmlFor="password">
+            Password
+          </label>
           <input
+            id="password"
             type="password"
+            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl 
+                       shadow-inner text-sm lg:text-base focus-visible:ring-2 
+                       focus-visible:ring-teal-700"
             placeholder="Password"
-            className="w-full p-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-teal-700 shadow-inner"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          <Button className="w-full bg-teal-700 hover:bg-teal-800 text-white rounded-xl py-3 shadow-lg font-semibold">
+          <Button
+            aria-label={mode === "login" ? "Sign in" : "Create account"}
+            className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 lg:py-4 
+                       rounded-xl shadow-lg font-semibold text-sm lg:text-base"
+          >
             {mode === "login" ? "Sign In" : "Create Account"}
           </Button>
+
         </form>
 
+        {/* MAGIC LINK */}
         <button
+          aria-label="Send a magic login link"
           onClick={handleMagicLink}
-          className="text-sm text-teal-700 underline hover:text-teal-800"
+          className="w-full text-teal-700 underline text-xs lg:text-sm hover:text-teal-900"
         >
           Send me a magic login link
         </button>
 
+        {/* TOGGLE MODE */}
         <button
+          aria-label="Toggle auth mode"
           onClick={() => setMode(mode === "login" ? "signup" : "login")}
-          className="text-xs text-gray-500 hover:text-gray-700"
+          className="block text-center text-xs lg:text-sm text-gray-500 hover:text-gray-700"
         >
           {mode === "login"
             ? "New educator? Create an account"

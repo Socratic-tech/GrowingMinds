@@ -50,6 +50,7 @@ export default function Library() {
       setCategory("Guide");
       setShowAdd(false);
       loadResources();
+      showToast({ title: "Resource added", type: "success" });
     }
   }
 
@@ -65,15 +66,25 @@ export default function Library() {
       {/* HEADER */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-100 text-teal-700 rounded-2xl flex items-center justify-center shadow">
+          <div
+            aria-hidden="true"
+            className="w-10 h-10 bg-teal-100 text-teal-700 
+                       rounded-3xl lg:rounded-2xl flex items-center justify-center shadow"
+          >
             📚
           </div>
-          <h2 className="text-xl font-bold text-teal-800">Library</h2>
+
+          <h1 className="text-xl lg:text-3xl font-bold text-teal-800">
+            Library
+          </h1>
         </div>
 
         {isAdmin && (
           <Button
-            className="bg-teal-700 hover:bg-teal-800 text-white rounded-xl px-4 py-2 shadow-md"
+            aria-label={showAdd ? "Cancel add resource form" : "Add new resource"}
+            className="bg-teal-700 hover:bg-teal-800 text-white 
+                       px-4 py-2 rounded-xl lg:rounded-lg shadow-md 
+                       text-xs lg:text-sm min-h-[44px]"
             onClick={() => setShowAdd(!showAdd)}
           >
             {showAdd ? "Cancel" : "Add"}
@@ -81,30 +92,54 @@ export default function Library() {
         )}
       </div>
 
-      {/* ADD FORM */}
+      {/* ADD RESOURCE FORM */}
       {showAdd && (
         <form
           onSubmit={addResource}
-          className="bg-white p-6 rounded-3xl border border-gray-200 shadow-md space-y-4 animate-fadeIn"
+          aria-labelledby="add-resource-title"
+          className="bg-white p-6 rounded-3xl lg:rounded-2xl border border-gray-200 
+                     shadow-md space-y-4 animate-fadeIn"
         >
+          <label id="add-resource-title" className="sr-only">
+            Add a new resource
+          </label>
+
+          <label htmlFor="resource-title" className="sr-only">
+            Resource Title
+          </label>
           <input
+            id="resource-title"
             type="text"
             placeholder="Title"
-            className="w-full p-3 border border-gray-300 rounded-xl shadow-inner text-sm"
+            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl lg:rounded-lg 
+                       shadow-inner text-sm lg:text-base focus-visible:ring-2 
+                       focus-visible:ring-teal-700"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
 
+          <label htmlFor="resource-url" className="sr-only">
+            Resource URL
+          </label>
           <input
+            id="resource-url"
             type="text"
             placeholder="URL"
-            className="w-full p-3 border border-gray-300 rounded-xl shadow-inner text-sm"
+            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl lg:rounded-lg 
+                       shadow-inner text-sm lg:text-base focus-visible:ring-2 
+                       focus-visible:ring-teal-700"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
           />
 
+          <label htmlFor="resource-category" className="sr-only">
+            Resource Category
+          </label>
           <select
-            className="w-full p-3 border border-gray-300 rounded-xl text-sm bg-white shadow-inner"
+            id="resource-category"
+            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl lg:rounded-lg
+                       text-sm lg:text-base bg-white shadow-inner focus-visible:ring-2 
+                       focus-visible:ring-teal-700"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           >
@@ -113,7 +148,11 @@ export default function Library() {
             <option>Video</option>
           </select>
 
-          <Button className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 rounded-xl shadow-lg text-xs font-bold uppercase">
+          <Button
+            aria-label="Submit new resource"
+            className="w-full bg-teal-700 hover:bg-teal-800 text-white 
+                       py-3 lg:py-4 rounded-xl shadow-lg text-xs lg:text-base"
+          >
             Add Resource
           </Button>
         </form>
@@ -124,29 +163,49 @@ export default function Library() {
         {resources.map((r) => (
           <div
             key={r.id}
-            className="bg-white p-5 rounded-2xl border border-gray-200 shadow-md flex justify-between items-center"
+            className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-gray-200 
+                       shadow-md flex justify-between items-center"
+            role="group"
+            aria-label={`Resource titled ${r.title}`}
           >
+            {/* Resource Link */}
             <a
               href={r.url}
               target="_blank"
-              className="flex items-center gap-4 flex-1 hover:underline"
+              rel="noopener noreferrer"
+              aria-label={`Open resource: ${r.title}`}
+              className="flex items-center gap-4 flex-1 hover:underline 
+                         focus-visible:ring-2 focus-visible:ring-teal-700 rounded-lg"
             >
-              <div className="w-10 h-10 bg-teal-100 text-teal-700 rounded-xl flex items-center justify-center shadow">
+              <div
+                aria-hidden="true"
+                className="w-10 h-10 bg-teal-100 text-teal-700 rounded-xl 
+                           flex items-center justify-center shadow"
+              >
                 🔗
               </div>
 
               <div className="flex flex-col">
-                <p className="font-semibold text-gray-800 text-sm">{r.title}</p>
-                <span className="text-[10px] uppercase font-bold text-teal-700">
+                <p className="font-semibold text-gray-800 text-sm lg:text-base">
+                  {r.title}
+                </p>
+
+                <span className="text-[10px] lg:text-xs uppercase font-bold text-teal-700">
                   {r.category}
                 </span>
               </div>
             </a>
 
+            {/* DELETE BUTTON */}
             {isAdmin && (
               <button
+                aria-label={`Delete resource titled ${r.title}`}
                 onClick={() => deleteResource(r.id)}
-                className="text-red-400 hover:text-red-600 text-sm px-2"
+                className="
+                  w-10 h-10 flex items-center justify-center rounded-xl 
+                  text-red-400 hover:text-red-600 text-base 
+                  focus-visible:ring-2 focus-visible:ring-red-500 ml-2
+                "
               >
                 🗑️
               </button>

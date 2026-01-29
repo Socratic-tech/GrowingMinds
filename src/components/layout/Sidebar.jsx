@@ -1,65 +1,82 @@
-import { useAuth } from "../../context/AuthProvider";
-import { Home, Book, MessageSquare, Shield, LogOut } from "lucide-react";
 import { supabase } from "../../supabase/client";
+import { useAuth } from "../../context/AuthProvider";
 
 export default function Sidebar({ navigate, isAdmin }) {
   const { profile } = useAuth();
 
   const items = [
-    { label: "Feed", icon: <Home size={20} />, path: "/feed" },
-    { label: "Library", icon: <Book size={20} />, path: "/library" },
-    { label: "Q&A", icon: <MessageSquare size={20} />, path: "/qa" },
+    { label: "Feed", path: "/feed", icon: "🏠" },
+    { label: "Library", path: "/library", icon: "📚" },
+    { label: "Q&A", path: "/qa", icon: "❓" },
   ];
 
   if (isAdmin) {
-    items.push({
-      label: "Admin",
-      icon: <Shield size={20} />,
-      path: "/admin",
-    });
+    items.push({ label: "Admin", path: "/admin", icon: "🛡️" });
   }
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 h-screen p-6 flex flex-col gap-6 shadow-xl">
-
-      {/* Profile */}
+    <nav
+      aria-label="Sidebar navigation"
+      className="w-64 bg-white border-r border-gray-200 h-screen p-6 
+                 flex flex-col gap-6 shadow-xl"
+    >
+      {/* PROFILE SECTION */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-teal-700 text-white rounded-full flex items-center justify-center font-bold">
+        <div
+          aria-hidden="true"
+          className="w-10 h-10 bg-teal-700 text-white rounded-full 
+                     flex items-center justify-center font-bold"
+        >
           {profile?.email?.charAt(0).toUpperCase()}
         </div>
+
         <div>
-          <p className="font-bold text-gray-800">
+          <p className="font-bold text-gray-800 text-sm lg:text-base">
             {profile?.email?.split("@")[0]}
           </p>
-          <p className="text-xs text-gray-500 uppercase tracking-wide">
+          <p className="text-xs lg:text-sm text-gray-500 uppercase tracking-wide">
             {isAdmin ? "Admin" : "Educator"}
           </p>
         </div>
       </div>
 
-      {/* Nav */}
-      <div className="flex flex-col gap-3">
+      {/* NAVIGATION ITEMS */}
+      <ul className="flex flex-col gap-1 mt-4">
         {items.map((item) => (
-          <button
-            key={item.label}
-            className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-teal-800 transition"
-            onClick={() => navigate(item.path)}
-          >
-            {item.icon}
-            <span className="font-medium">{item.label}</span>
-          </button>
+          <li key={item.path}>
+            <button
+              onClick={() => navigate(item.path)}
+              aria-label={item.label}
+              className="
+                flex items-center justify-start gap-3 w-full text-left
+                p-3 rounded-2xl hover:bg-gray-100 
+                focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2
+                min-h-[44px]
+              "
+            >
+              <span className="text-lg lg:text-xl">{item.icon}</span>
+              <span className="font-medium text-sm lg:text-base">{item.label}</span>
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
 
+      {/* LOGOUT */}
       <div className="mt-auto pt-6 border-t">
         <button
+          aria-label="Logout"
           onClick={() => supabase.auth.signOut()}
-          className="flex items-center gap-3 p-2 rounded-lg hover:bg-red-100 text-red-600 transition"
+          className="
+            flex items-center gap-3 p-3 rounded-xl text-red-600
+            hover:bg-red-100 
+            focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2
+            min-h-[44px]
+          "
         >
-          <LogOut size={20} />
-          <span className="font-medium">Logout</span>
+          <span className="text-lg lg:text-xl">🚪</span>
+          <span className="font-medium text-sm lg:text-base">Logout</span>
         </button>
       </div>
-    </div>
+    </nav>
   );
 }
