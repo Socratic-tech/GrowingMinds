@@ -35,7 +35,7 @@ function LowercaseRedirect() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter basename="/growingminds-beta">
+    <BrowserRouter basename="/GrowingMinds">
       <ToastProvider>
         <AuthProvider>
           <LowercaseRedirect />
