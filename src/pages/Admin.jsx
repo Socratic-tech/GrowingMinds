@@ -46,7 +46,9 @@ export default function Admin() {
         type: "success",
       });
     }
-  }, [showToast, loadUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
+  // Note: loadUsers is called but not in deps to prevent circular dependency
 
   // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS
   useEffect(() => {
