@@ -34,8 +34,8 @@ export default function ResetPassword() {
         type: "success",
       });
 
-      // Redirect to login
-      window.location.href = "/login";
+      // Redirect to login (use navigate for SPA routing)
+      window.location.href = "/GrowingMinds/auth";
     }
 
     setLoading(false);

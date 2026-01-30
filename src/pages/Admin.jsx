@@ -1,20 +1,34 @@
 import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
+import { useAuth } from "../context/AuthProvider";
 
 export default function Admin() {
+  const { profile } = useAuth();
   const { showToast } = useToast();
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Only admins can access this page
+  if (profile && profile.role !== "admin") {
+    return <Navigate to="/feed" replace />;
+  }
 
   // Load all users
   async function loadUsers() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("*")
       .order("created_at", { ascending: false });
 
-    setUsers(data || []);
+    if (error) {
+      showToast({ title: "Failed to load users", description: error.message, type: "error" });
+    } else {
+      setUsers(data || []);
+    }
+    setLoading(false);
   }
 
   // Approve / Restrict

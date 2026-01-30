@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthProvider";
 
 export default function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
 
   // Wait for Supabase to check session
   if (loading) {
@@ -12,6 +12,11 @@ export default function ProtectedRoute({ children }) {
   // If no user → redirect to login
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  // If user exists but not approved → redirect to pending
+  if (profile && !profile.is_approved) {
+    return <Navigate to="/pending" replace />;
   }
 
   return children;

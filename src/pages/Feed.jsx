@@ -1,9 +1,60 @@
 import { useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import RichEditor from "../components/ui/RichEditor";
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// Compress image to target size
+async function compressImage(file, maxSize = MAX_FILE_SIZE) {
+  // If already under limit, return as-is
+  if (file.size <= maxSize) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    img.onload = () => {
+      let { width, height } = img;
+      let quality = 0.9;
+
+      // Scale down large images
+      const maxDim = 2048;
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Iteratively reduce quality until under size limit
+      const tryCompress = (q) => {
+        canvas.toBlob(
+          (blob) => {
+            if (blob.size <= maxSize || q <= 0.1) {
+              resolve(new File([blob], file.name, { type: "image/jpeg" }));
+            } else {
+              tryCompress(q - 0.1);
+            }
+          },
+          "image/jpeg",
+          q
+        );
+      };
+
+      tryCompress(quality);
+    };
+
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 export default function Feed() {
   const { user, profile } = useAuth();
@@ -26,7 +77,11 @@ export default function Feed() {
       .select("*, profiles(email)")
       .order("created_at", { ascending: false });
 
-    if (!error) setPosts(data || []);
+    if (error) {
+      showToast({ title: "Failed to load posts", description: error.message, type: "error" });
+    } else {
+      setPosts(data || []);
+    }
     setLoading(false);
   }
 
@@ -40,13 +95,16 @@ export default function Feed() {
     let url = null;
 
     if (imageFile) {
-      const fileName = `${user.id}-${Date.now()}-${imageFile.name}`;
-      const { error: uploadError } = await supabase
+      // Compress image if over 5MB
+      const processedFile = await compressImage(imageFile);
+      const fileName = `${user.id}-${Date.now()}-${processedFile.name}`;
+
+      const { error: uploadError } = await supabase.storage
         .from("post-images")
-        .upload(fileName, imageFile);
+        .upload(fileName, processedFile);
 
       if (uploadError) {
-        showToast({ title: "Upload failed", type: "error" });
+        showToast({ title: "Upload failed", description: uploadError.message, type: "error" });
         setCreating(false);
         return;
       }
@@ -74,8 +132,12 @@ export default function Feed() {
 
   async function deletePost(id) {
     if (!confirm("Delete this post?")) return;
-    await supabase.from("posts").delete().eq("id", id);
-    fetchPosts();
+    const { error } = await supabase.from("posts").delete().eq("id", id);
+    if (error) {
+      showToast({ title: "Failed to delete post", description: error.message, type: "error" });
+    } else {
+      fetchPosts();
+    }
   }
 
   return (
@@ -203,7 +265,7 @@ function PostCard({ post, user, isAdmin, onDelete }) {
       {/* CONTENT */}
       <div
         className="prose prose-sm lg:prose-base text-gray-800 leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: post.content }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }}
       />
 
       {/* IMAGE */}
@@ -230,13 +292,17 @@ function CommentSection({ postId, user, isAdmin }) {
   const [text, setText] = useState("");
 
   async function loadComments() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("comments")
       .select("*, profiles(email)")
       .eq("post_id", postId)
       .order("created_at", { ascending: true });
 
-    setComments(data || []);
+    if (error) {
+      showToast({ title: "Failed to load comments", type: "error" });
+    } else {
+      setComments(data || []);
+    }
   }
 
   useEffect(() => {
@@ -247,19 +313,27 @@ function CommentSection({ postId, user, isAdmin }) {
     e.preventDefault();
     if (!text.trim()) return;
 
-    await supabase.from("comments").insert({
+    const { error } = await supabase.from("comments").insert({
       post_id: postId,
       user_id: user.id,
       content: text,
     });
 
-    setText("");
-    loadComments();
+    if (error) {
+      showToast({ title: "Failed to post comment", type: "error" });
+    } else {
+      setText("");
+      loadComments();
+    }
   }
 
   async function deleteComment(id) {
-    await supabase.from("comments").delete().eq("id", id);
-    loadComments();
+    const { error } = await supabase.from("comments").delete().eq("id", id);
+    if (error) {
+      showToast({ title: "Failed to delete comment", type: "error" });
+    } else {
+      loadComments();
+    }
   }
 
   return (
