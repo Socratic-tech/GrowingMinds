@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Navigate } from "react-router-dom";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
@@ -6,18 +6,13 @@ import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 
 export default function Admin() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { showToast } = useToast();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Only admins can access this page
-  if (profile && profile.role !== "admin") {
-    return <Navigate to="/feed" replace />;
-  }
-
   // Load all users
-  async function loadUsers() {
+  const loadUsers = useCallback(async () => {
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
@@ -29,10 +24,10 @@ export default function Admin() {
       setUsers(data || []);
     }
     setLoading(false);
-  }
+  }, [showToast]);
 
   // Approve / Restrict
-  async function updateStatus(id, value) {
+  const updateStatus = useCallback(async (id, value) => {
     const { error } = await supabase
       .from("profiles")
       .update({ is_approved: value })
@@ -51,11 +46,24 @@ export default function Admin() {
         type: "success",
       });
     }
+  }, [showToast, loadUsers]);
+
+  // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS
+  useEffect(() => {
+    // Only load users if we're an admin
+    if (!authLoading && profile?.role === "admin") {
+      loadUsers();
+    }
+  }, [authLoading, profile, loadUsers]);
+
+  // Now we can do early returns
+  if (authLoading) {
+    return <div className="text-center p-10">Loading…</div>;
   }
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  if (!profile || profile.role !== "admin") {
+    return <Navigate to="/feed" replace />;
+  }
 
   const pending = users.filter((u) => !u.is_approved);
   const approved = users.filter((u) => u.is_approved);
@@ -67,7 +75,7 @@ export default function Admin() {
       <div className="flex items-center gap-3">
         <div
           aria-hidden="true"
-          className="w-10 h-10 bg-teal-100 text-teal-700 
+          className="w-10 h-10 bg-teal-100 text-teal-700
                      rounded-3xl lg:rounded-2xl flex items-center justify-center shadow"
         >
           🛡️
@@ -78,88 +86,96 @@ export default function Admin() {
         </h1>
       </div>
 
+      {loading && (
+        <p className="text-center text-gray-400">Loading educators…</p>
+      )}
+
       {/* PENDING EDUCATORS */}
-      <section aria-labelledby="pending-title" className="space-y-4">
-        <h2
-          id="pending-title"
-          className="text-xs lg:text-sm uppercase tracking-widest font-bold text-amber-600 
-                     flex items-center gap-2"
-        >
-          ⏳ Pending Approval ({pending.length})
-        </h2>
-
-        {pending.length === 0 && (
-          <p className="text-sm lg:text-base text-gray-500 italic pl-1">
-            No pending educators.
-          </p>
-        )}
-
-        {pending.map((u) => (
-          <div
-            key={u.id}
-            role="group"
-            aria-label={`Pending educator ${u.email}`}
-            className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-amber-200 
-                       shadow-md space-y-3"
+      {!loading && (
+        <section aria-labelledby="pending-title" className="space-y-4">
+          <h2
+            id="pending-title"
+            className="text-xs lg:text-sm uppercase tracking-widest font-bold text-amber-600
+                       flex items-center gap-2"
           >
-            <p className="font-semibold text-gray-800 text-sm lg:text-base truncate">
-              {u.email}
+            ⏳ Pending Approval ({pending.length})
+          </h2>
+
+          {pending.length === 0 && (
+            <p className="text-sm lg:text-base text-gray-500 italic pl-1">
+              No pending educators.
             </p>
+          )}
 
-            <Button
-              aria-label={`Approve ${u.email}`}
-              className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 lg:py-4 
-                         rounded-xl shadow-md text-xs lg:text-sm uppercase font-bold"
-              onClick={() => updateStatus(u.id, true)}
+          {pending.map((u) => (
+            <div
+              key={u.id}
+              role="group"
+              aria-label={`Pending educator ${u.email}`}
+              className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-amber-200
+                         shadow-md space-y-3"
             >
-              Approve Educator
-            </Button>
-          </div>
-        ))}
-      </section>
-
-      {/* ACTIVE EDUCATORS */}
-      <section aria-labelledby="active-title" className="space-y-4 pb-24">
-        <h2
-          id="active-title"
-          className="text-xs lg:text-sm uppercase tracking-widest font-bold text-teal-600 
-                     flex items-center gap-2"
-        >
-          ✔ Active Educators ({approved.length})
-        </h2>
-
-        {approved.map((u) => (
-          <div
-            key={u.id}
-            role="group"
-            aria-label={`Active educator ${u.email}`}
-            className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-gray-200 
-                       shadow-md flex items-center justify-between"
-          >
-            <div className="flex flex-col pr-3 overflow-hidden">
               <p className="font-semibold text-gray-800 text-sm lg:text-base truncate">
                 {u.email}
               </p>
 
-              <p className="text-[10px] lg:text-xs text-teal-700 uppercase font-bold">
-                {u.role}
-              </p>
+              <Button
+                aria-label={`Approve ${u.email}`}
+                className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 lg:py-4
+                           rounded-xl shadow-md text-xs lg:text-sm uppercase font-bold"
+                onClick={() => updateStatus(u.id, true)}
+              >
+                Approve Educator
+              </Button>
             </div>
+          ))}
+        </section>
+      )}
 
-            <button
-              aria-label={`Restrict educator ${u.email}`}
-              onClick={() => updateStatus(u.id, false)}
-              className="
-                w-10 h-10 flex items-center justify-center rounded-xl 
-                text-red-400 hover:text-red-600 text-lg 
-                focus-visible:ring-2 focus-visible:ring-red-500
-              "
+      {/* ACTIVE EDUCATORS */}
+      {!loading && (
+        <section aria-labelledby="active-title" className="space-y-4 pb-24">
+          <h2
+            id="active-title"
+            className="text-xs lg:text-sm uppercase tracking-widest font-bold text-teal-600
+                       flex items-center gap-2"
+          >
+            ✔ Active Educators ({approved.length})
+          </h2>
+
+          {approved.map((u) => (
+            <div
+              key={u.id}
+              role="group"
+              aria-label={`Active educator ${u.email}`}
+              className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-gray-200
+                         shadow-md flex items-center justify-between"
             >
-              🗑️
-            </button>
-          </div>
-        ))}
-      </section>
+              <div className="flex flex-col pr-3 overflow-hidden">
+                <p className="font-semibold text-gray-800 text-sm lg:text-base truncate">
+                  {u.email}
+                </p>
+
+                <p className="text-[10px] lg:text-xs text-teal-700 uppercase font-bold">
+                  {u.role}
+                </p>
+              </div>
+
+              <button
+                aria-label={`Restrict educator ${u.email}`}
+                onClick={() => updateStatus(u.id, false)}
+                className="
+                  w-10 h-10 flex items-center justify-center rounded-xl
+                  text-red-400 hover:text-red-600 text-lg
+                  focus-visible:ring-2 focus-visible:ring-red-500
+                "
+              >
+                🗑️
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

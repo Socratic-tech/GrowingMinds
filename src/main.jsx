@@ -7,6 +7,7 @@ import "./index.css";
 // Pages
 import AuthPage from "./pages/Auth.jsx";
 import Pending from "./pages/Pending.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
 import Feed from "./pages/Feed.jsx";
 import QA from "./pages/QA.jsx";
 import Library from "./pages/Library.jsx";
@@ -54,6 +55,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 
             {/* PENDING ACCOUNT */}
             <Route path="/pending" element={<Pending />} />
+
+            {/* PASSWORD RESET */}
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* PROTECTED (Logged-in) */}
             <Route

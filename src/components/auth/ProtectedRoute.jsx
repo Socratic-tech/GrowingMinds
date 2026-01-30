@@ -14,8 +14,8 @@ export default function ProtectedRoute({ children }) {
     return <Navigate to="/auth" replace />;
   }
 
-  // If user exists but not approved → redirect to pending
-  if (profile && !profile.is_approved) {
+  // If user exists but no profile yet, or not approved → redirect to pending
+  if (!profile || !profile.is_approved) {
     return <Navigate to="/pending" replace />;
   }
 
