@@ -54,7 +54,9 @@ export default function Admin() {
     if (!authLoading && profile?.role === "admin") {
       loadUsers();
     }
-  }, [authLoading, profile, loadUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, profile?.role]);
+  // Note: loadUsers is intentionally excluded to prevent infinite loop
 
   // Now we can do early returns
   if (authLoading) {
