@@ -100,7 +100,7 @@ export default function Feed() {
       const fileName = `${user.id}-${Date.now()}-${processedFile.name}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("post-images")
+        .from("post-image")
         .upload(fileName, processedFile);
 
       if (uploadError) {
@@ -109,7 +109,7 @@ export default function Feed() {
         return;
       }
 
-      const pub = supabase.storage.from("post-images").getPublicUrl(fileName);
+      const pub = supabase.storage.from("post-image").getPublicUrl(fileName);
       url = pub.data.publicUrl;
     }
 
