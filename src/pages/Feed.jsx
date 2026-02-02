@@ -99,9 +99,13 @@ export default function Feed() {
       const processedFile = await compressImage(imageFile);
       const fileName = `${user.id}-${Date.now()}-${processedFile.name}`;
 
+      console.log("Uploading file:", fileName, "Size:", processedFile.size);
+
       const { error: uploadError } = await supabase.storage
         .from("post-image")
         .upload(fileName, processedFile);
+
+      console.log("Upload result:", { uploadError });
 
       if (uploadError) {
         showToast({ title: "Upload failed", description: uploadError.message, type: "error" });
@@ -111,6 +115,7 @@ export default function Feed() {
 
       const pub = supabase.storage.from("post-image").getPublicUrl(fileName);
       url = pub.data.publicUrl;
+      console.log("Public URL:", url);
     }
 
     const { error } = await supabase.from("posts").insert({
