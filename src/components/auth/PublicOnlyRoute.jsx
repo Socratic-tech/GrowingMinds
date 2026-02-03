@@ -10,7 +10,7 @@ export default function PublicOnlyRoute({ children }) {
 
   // Logged-in users should NOT see login/signup
   if (user) {
-    return <Navigate to="/feed" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;
