@@ -13,8 +13,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // https://socratic-tech.github.io/GrowingMinds/
 
 export const REDIRECT_URL =
-  import.meta.env.VITE_REDIRECT_URL ||
-  "https://socratic-tech.github.io/GrowingMinds/";
+  "https://socratic-tech.github.io/GrowingMinds/#/auth/callback";
+
 
 // --- Create Supabase Client ---
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
