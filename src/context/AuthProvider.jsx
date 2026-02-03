@@ -31,28 +31,25 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    const init = async () => {
-      // ⭐ SUPABASE v2 OAUTH CALLBACK HANDLING
-      try {
-        const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
-        if (error) console.warn("OAuth exchange error:", error);
-      } catch (e) {
-        console.warn("OAuth processing failed:", e);
-      }
+  async function handleOAuthCallback() {
+    console.log("FULL CALLBACK URL:", window.location.href);
 
-      // ⭐ Now load the stored session
-      const {
-        data: { session }
-      } = await supabase.auth.getSession();
+    // <-- STOP HERE. DO NOT exchange the code yet.
+    debugger; // This will freeze execution so you can inspect URL.
 
-      if (session?.user) {
-        await loadProfile(session.user);
-      } else {
-        setLoading(false);
-      }
-    };
+    try {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(
+        window.location.href
+      );
 
-    init();
+      console.log("exchange response", { data, error });
+    } catch (err) {
+      console.error("Unexpected error:", err);
+    }
+  }
+
+  handleOAuthCallback();
+}, []);
 
     // ⭐ React to auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
