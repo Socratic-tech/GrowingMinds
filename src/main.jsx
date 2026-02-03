@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import "./index.css";
 
@@ -22,21 +22,10 @@ import { ToastProvider } from "./components/ui/toast.jsx";
 import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";
 import PublicOnlyRoute from "./components/auth/PublicOnlyRoute.jsx";
 
-// Lowercase Enforcer
-function LowercaseRedirect() {
-  const location = useLocation();
-  const lower = location.pathname.toLowerCase();
-
-  if (location.pathname !== lower) {
-    return <Navigate to={lower + location.search + location.hash} replace />;
-  }
-
-  return null;
-}
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter basename="/GrowingMinds">
+    <HashRouter basename="/">
       <ToastProvider>
         <AuthProvider>
           <LowercaseRedirect />
@@ -81,7 +70,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 
         </AuthProvider>
       </ToastProvider>
-    </BrowserRouter>
+    </HashRouter>
   </React.StrictMode>
 );
-
