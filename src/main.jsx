@@ -22,6 +22,23 @@ import { ToastProvider } from "./components/ui/toast.jsx";
 import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";
 import PublicOnlyRoute from "./components/auth/PublicOnlyRoute.jsx";
 
+//Lower case
+function LowercaseRedirect() {
+  const location = useLocation();
+
+  // 🚫 Do NOT rewrite during Supabase OAuth callback
+  if (location.hash.includes("access_token") || location.hash.includes("refresh_token")) {
+    return null;
+  }
+
+  const lower = location.pathname.toLowerCase();
+  if (location.pathname !== lower) {
+    return <Navigate to={lower + location.search + location.hash} replace />;
+  }
+
+  return null;
+}
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
