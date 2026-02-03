@@ -8,7 +8,7 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load profile from Supabase
+  // Fetch profile for a given auth user
   const loadProfile = async (authUser) => {
     try {
       const { data, error } = await supabase
@@ -17,7 +17,9 @@ export function AuthProvider({ children }) {
         .eq("id", authUser.id)
         .single();
 
-      if (error) console.error("Profile load error:", error);
+      if (error) {
+        console.error("Profile load error:", error);
+      }
 
       setUser(authUser);
       setProfile(data || null);
@@ -30,18 +32,15 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const init = async () => {
-      // ⭐ VERY IMPORTANT:
-      // Process Supabase OAuth callback BEFORE React Router rewrites the URL.
+      // ⭐ SUPABASE v2 OAUTH CALLBACK HANDLING
       try {
-        const { data: urlData, error: urlError } =
-          await supabase.auth.getSessionFromUrl({ storeSession: true });
-
-        if (urlError) console.warn("OAuth URL processing error:", urlError);
-      } catch (err) {
-        console.warn("OAuth callback read failed:", err);
+        const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+        if (error) console.warn("OAuth exchange error:", error);
+      } catch (e) {
+        console.warn("OAuth processing failed:", e);
       }
 
-      // Now safely load session
+      // ⭐ Now load the stored session
       const {
         data: { session }
       } = await supabase.auth.getSession();
@@ -55,18 +54,18 @@ export function AuthProvider({ children }) {
 
     init();
 
-    // Listen for auth state changes
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await loadProfile(session.user);
-      } else {
-        setUser(null);
-        setProfile(null);
-        setLoading(false);
+    // ⭐ React to auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (session?.user) {
+          await loadProfile(session.user);
+        } else {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+        }
       }
-    });
+    );
 
     return () => subscription.unsubscribe();
   }, []);
