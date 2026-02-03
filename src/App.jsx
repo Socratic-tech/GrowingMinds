@@ -24,9 +24,11 @@ export default function App() {
     return <ResetPassword />;
   }
 
+  // Not logged in → show auth page
   if (!user) return <AuthPage />;
 
-  if (profile && profile.is_approved !== true) {
+  // FIX: Allow admins to bypass approval requirement
+  if (profile && profile.role !== "admin" && profile.is_approved !== true) {
     return <Pending />;
   }
 
@@ -41,6 +43,8 @@ export default function App() {
         <Route path="/feed" element={<Feed />} />
         <Route path="/qa" element={<QA />} />
         <Route path="/library" element={<Library />} />
+
+        {/* Admin-only route */}
         {isAdmin && <Route path="/admin" element={<Admin />} />}
       </Route>
 
@@ -51,3 +55,4 @@ export default function App() {
     </Routes>
   );
 }
+  
