@@ -8,42 +8,65 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Load profile from Supabase
   const loadProfile = async (authUser) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", authUser.id)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", authUser.id)
+        .single();
 
-    setUser(authUser);
-    setProfile(data || null);
-    setLoading(false);
+      if (error) console.error("Profile load error:", error);
+
+      setUser(authUser);
+      setProfile(data || null);
+    } catch (e) {
+      console.error("Profile fetch exception:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     const init = async () => {
+      // ⭐ VERY IMPORTANT:
+      // Process Supabase OAuth callback BEFORE React Router rewrites the URL.
       try {
-        await supabase.auth.getSessionFromUrl({ storeSession: true });
-      } catch {}
+        const { data: urlData, error: urlError } =
+          await supabase.auth.getSessionFromUrl({ storeSession: true });
 
-      const { data: { session } } = await supabase.auth.getSession();
+        if (urlError) console.warn("OAuth URL processing error:", urlError);
+      } catch (err) {
+        console.warn("OAuth callback read failed:", err);
+      }
 
-      if (session?.user) await loadProfile(session.user);
-      else setLoading(false);
+      // Now safely load session
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        await loadProfile(session.user);
+      } else {
+        setLoading(false);
+      }
     };
 
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_, session) => {
-        if (session?.user) loadProfile(session.user);
-        else {
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-        }
+    // Listen for auth state changes
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        await loadProfile(session.user);
+      } else {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
       }
-    );
+    });
 
     return () => subscription.unsubscribe();
   }, []);
