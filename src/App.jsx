@@ -14,7 +14,7 @@ export default function App() {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
 
-  // 🔥 DEBUG PANEL (always visible in bottom-left corner)
+  // DEBUG PANEL (always visible)
   const debugPanel = (
     <div
       style={{
@@ -26,19 +26,22 @@ export default function App() {
         color: "white",
         zIndex: 99999,
         borderRadius: 6,
+        fontSize: "12px",
       }}
     >
-      <div>APP VERSION: <b>A1</b></div> 
+      <div>APP VERSION: <b>A2</b></div>
       <div>User: {user ? "YES" : "NO"}</div>
       <div>Role: {profile?.role || "null"}</div>
       <div>Approved: {String(profile?.is_approved)}</div>
       <div>Loading: {String(loading)}</div>
+      <div>Location: {location.pathname}</div>
     </div>
   );
 
+  // Still initializing Supabase session
   if (loading) return <div>Loading...{debugPanel}</div>;
 
-  // Detect password recovery mode
+  // Handle password reset mode
   const params = new URLSearchParams(window.location.search);
   const type = params.get("type");
 
@@ -61,8 +64,18 @@ export default function App() {
     );
   }
 
-  // FIX: Allow admins to bypass approval requirement
-  if (profile && profile.role !== "admin" && profile.is_approved !== true) {
+  // 🟩 FIX: Do NOT redirect until profile FINISHES loading
+  if (!profile) {
+    return (
+      <>
+        {debugPanel}
+        <div className="text-center p-10 text-white">Loading profile…</div>
+      </>
+    );
+  }
+
+  // 🟦 FIX: Only send *real* unapproved non-admin users to Pending
+  if (profile.role !== "admin" && profile.is_approved !== true) {
     return (
       <>
         {debugPanel}
@@ -71,13 +84,14 @@ export default function App() {
     );
   }
 
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = profile.role === "admin";
 
+  // App routes
   return (
     <>
       {debugPanel}
       <Routes>
-        {/* App shell */}
+        {/* App Shell */}
         <Route element={<ShellLayout />}>
           <Route path="/" element={<Navigate to="/feed" />} />
           <Route path="/feed" element={<Feed />} />
@@ -89,9 +103,8 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* fallback */}
-        <Route path="*" element={<Navigate to="/feed" />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
 }
-  

@@ -4,16 +4,17 @@ import { useAuth } from "../../context/AuthProvider";
 export default function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuth();
 
-  if (loading) {
-    return <div className="text-center p-10">Loading…</div>;
-  }
+  // Wait until auth and profile finish loading
+  if (loading) return <div>Loading...</div>;
 
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
+  // If no authenticated user, go to login
+  if (!user) return <Navigate to="/auth" replace />;
 
-  // FIX: Allow admins access even if not approved
-  if (!profile || (!profile.is_approved && profile.role !== "admin")) {
+  // If profile has not loaded yet, don’t redirect early
+  if (!profile) return <div>Loading profile...</div>;
+
+  // Only block non-admins who are not approved
+  if (profile.role !== "admin" && profile.is_approved !== true) {
     return <Navigate to="/pending" replace />;
   }
 
