@@ -11,6 +11,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.7.5",
     "@radix-ui/react-toast": "^1.2.15",
     "@supabase/supabase-js": "^2.93.2",
     "@tiptap/extension-link": "^3.18.0",
