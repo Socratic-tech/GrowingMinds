@@ -53,20 +53,23 @@ export default function AuthPage() {
     }
   }
 
-  async function handleGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: REDIRECT_URL },
-    });
+ async function handleGoogle() {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { 
+      redirectTo: "https://socratic-tech.github.io/GrowingMinds/#/auth/callback"
+    },
+  });
 
-    if (error) {
-      showToast({
-        title: "Google login error",
-        description: error.message,
-        type: "error",
-      });
-    }
+  if (error) {
+    showToast({
+      title: "Google login error",
+      description: error.message,
+      type: "error",
+    });
   }
+}
+
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center 
