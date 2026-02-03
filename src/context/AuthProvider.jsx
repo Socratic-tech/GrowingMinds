@@ -17,9 +17,7 @@ export function AuthProvider({ children }) {
         .eq("id", authUser.id)
         .single();
 
-      if (error) {
-        console.error("Profile load error:", error);
-      }
+      if (error) console.error("Profile load error:", error);
 
       setUser(authUser);
       setProfile(data || null);
@@ -30,43 +28,50 @@ export function AuthProvider({ children }) {
     }
   };
 
+  //
+  // 🚧 DEBUG: Capture OAuth redirect URL before parsing
+  //
   useEffect(() => {
-  async function handleOAuthCallback() {
-    console.log("FULL CALLBACK URL:", window.location.href);
+    async function handleOAuthCallback() {
+      console.log("FULL CALLBACK URL:", window.location.href);
+      debugger; // Pause so we can inspect the URL
 
-    // <-- STOP HERE. DO NOT exchange the code yet.
-    debugger; // This will freeze execution so you can inspect URL.
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(
+          window.location.href
+        );
 
-    try {
-      const { data, error } = await supabase.auth.exchangeCodeForSession(
-        window.location.href
-      );
-
-      console.log("exchange response", { data, error });
-    } catch (err) {
-      console.error("Unexpected error:", err);
-    }
-  }
-
-  handleOAuthCallback();
-}, []);
-
-    // ⭐ React to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
-          await loadProfile(session.user);
-        } else {
-          setUser(null);
-          setProfile(null);
-          setLoading(false);
-        }
+        console.log("exchange response", { data, error });
+      } catch (err) {
+        console.error("Unexpected error:", err);
       }
-    );
+    }
+
+    handleOAuthCallback();
+  }, []);
+
+  //
+  // ⭐ Listen for auth state changes
+  //
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        await loadProfile(session.user);
+      } else {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
+    });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  //
+  // Context value
+  //
   const value = useMemo(
     () => ({ user, profile, loading }),
     [user, profile, loading]
