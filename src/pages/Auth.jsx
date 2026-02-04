@@ -10,10 +10,11 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // Email/password login or signup
   async function handleAuth(e) {
     e.preventDefault();
 
-    let response =
+    const response =
       mode === "login"
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({ email, password });
@@ -27,6 +28,7 @@ export default function AuthPage() {
     }
   }
 
+  // Magic link login
   async function handleMagicLink() {
     if (!email) {
       showToast({ title: "Enter an email address first", type: "error" });
@@ -53,24 +55,6 @@ export default function AuthPage() {
     }
   }
 
- async function handleGoogle() {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { 
-      redirectTo: "https://socratic-tech.github.io/GrowingMinds/#/auth/callback"
-    },
-  });
-
-  if (error) {
-    showToast({
-      title: "Google login error",
-      description: error.message,
-      type: "error",
-    });
-  }
-}
-
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center 
                     bg-gradient-to-br from-teal-800 to-teal-900 p-6">
@@ -94,29 +78,9 @@ export default function AuthPage() {
           </p>
         </div>
 
-        {/* GOOGLE BUTTON */}
-        <Button
-          aria-label="Sign in with Google"
-          onClick={handleGoogle}
-          className="w-full bg-red-500 hover:bg-red-600 text-white 
-                     rounded-xl lg:rounded-lg shadow-md min-h-[44px]"
-        >
-          Sign in with Google
-        </Button>
-
-        {/* DIVIDER */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-gray-200"></div>
-          <span className="text-xs lg:text-sm text-gray-400">OR</span>
-          <div className="flex-1 h-px bg-gray-200"></div>
-        </div>
-
         {/* EMAIL / PASSWORD FORM */}
         <form onSubmit={handleAuth} className="space-y-4">
 
-          <label className="sr-only" htmlFor="email">
-            Email Address
-          </label>
           <input
             id="email"
             type="email"
@@ -128,9 +92,6 @@ export default function AuthPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
 
-          <label className="sr-only" htmlFor="password">
-            Password
-          </label>
           <input
             id="password"
             type="password"

@@ -8,19 +8,17 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase environment variables. Check your .env file.");
 }
 
-// --- OAuth Redirect URL ---
-// GitHub Pages serves your app from this exact URL:
-// https://socratic-tech.github.io/GrowingMinds/
-
+// --- Redirect URL for magic link + password recovery ONLY ---
+// NO OAuth. This takes users directly back to your Auth screen.
 export const REDIRECT_URL =
-  "https://socratic-tech.github.io/GrowingMinds/#/auth/callback";
+  "https://socratic-tech.github.io/GrowingMinds/#/auth";
 
-
-// --- Create Supabase Client ---
+// --- Create Supabase Client (NO OAUTH HANDLING) ---
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,   // MUST be false for HashRouter MVP
     persistSession: true,
     autoRefreshToken: true,
+    redirectTo: REDIRECT_URL,    // Used ONLY for magic link & reset flows
   },
 });

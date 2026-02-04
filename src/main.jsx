@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { HashRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import "./index.css";
 
@@ -22,34 +22,15 @@ import { ToastProvider } from "./components/ui/toast.jsx";
 import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";
 import PublicOnlyRoute from "./components/auth/PublicOnlyRoute.jsx";
 
-//Lower case
-function LowercaseRedirect() {
-  const location = useLocation();
-
-  // 🚫 Do NOT rewrite during Supabase OAuth callback
-  if (location.hash.includes("access_token") || location.hash.includes("refresh_token")) {
-    return null;
-  }
-
-  const lower = location.pathname.toLowerCase();
-  if (location.pathname !== lower) {
-    return <Navigate to={lower + location.search + location.hash} replace />;
-  }
-
-  return null;
-}
-
-
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <HashRouter basename="/">
       <ToastProvider>
         <AuthProvider>
-          <LowercaseRedirect />
 
           <Routes>
 
-            {/* PUBLIC (Login) */}
+            {/* PUBLIC LOGIN PAGE */}
             <Route
               path="/auth"
               element={
@@ -59,13 +40,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               }
             />
 
-            {/* PENDING ACCOUNT */}
+            {/* PENDING APPROVAL */}
             <Route path="/pending" element={<Pending />} />
 
             {/* PASSWORD RESET */}
             <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* PROTECTED (Logged-in) */}
+            {/* PROTECTED APP SHELL */}
             <Route
               path="/"
               element={
@@ -81,7 +62,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route path="admin" element={<Admin />} />
             </Route>
 
-            {/* ANYTHING ELSE → HOME */}
+            {/* DEFAULT → HOME */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
 
