@@ -30,22 +30,38 @@ export function AuthProvider({ children }) {
     // Create and store the loading promise so concurrent calls can await it
     loadProfilePromiseRef.current = (async () => {
       try {
-        const { data, error } = await supabase
+        // Add 10 second timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Profile fetch timeout after 10s')), 10000)
+        );
+
+        const fetchPromise = supabase
           .from("profiles")
           .select("*")
           .eq("id", authUser.id)
           .single();
 
-        if (error) console.error("Profile load error:", error);
+        const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
 
-        setUser(authUser);
-        setProfile(data || null);
-        console.log("✅ Profile loaded successfully");
+        if (error) {
+          console.error("Profile load error:", error);
+          // Still set user even if profile fails - allows access
+          setUser(authUser);
+          setProfile(null);
+        } else {
+          setUser(authUser);
+          setProfile(data || null);
+          console.log("✅ Profile loaded successfully");
+        }
       } catch (e) {
         console.error("Profile fetch exception:", e);
+        // Set user anyway so they can access the app
+        setUser(authUser);
+        setProfile(null);
       } finally {
         loadProfilePromiseRef.current = null;
         setLoading(false);
+        console.log("Profile load complete");
       }
     })();
 

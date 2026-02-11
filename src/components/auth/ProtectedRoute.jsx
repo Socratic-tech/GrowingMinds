@@ -6,7 +6,9 @@ export default function ProtectedRoute({ children }) {
 
   // Still loading session/profile
   if (loading) {
-    return <div className="text-center p-10 text-white">Loading...</div>;
+    return <div className="min-h-screen bg-gradient-to-br from-teal-800 to-teal-900 flex items-center justify-center">
+      <div className="text-white text-xl font-semibold">Loading...</div>
+    </div>;
   }
 
   // Not logged in → Auth

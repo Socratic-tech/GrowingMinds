@@ -69,10 +69,10 @@ const safeStorage = {
 // --- Create Supabase Client (NO OAUTH HANDLING) ---
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    detectSessionInUrl: true,    // Required for magic link to work
+    detectSessionInUrl: false,   // Disabled for HashRouter stability
     persistSession: true,
     autoRefreshToken: true,
-    redirectTo: REDIRECT_URL,    // Used ONLY for magic link & reset flows
-    storage: safeStorage,         // Use safe storage wrapper
+    redirectTo: REDIRECT_URL,
+    storage: safeStorage,
   },
 });
