@@ -29,39 +29,78 @@ export function AuthProvider({ children }) {
   };
 
   //
-  // 🚧 DEBUG: Capture OAuth redirect URL before parsing
-  //
-  useEffect(() => {
-    async function handleOAuthCallback() {
-      console.log("FULL CALLBACK URL:", window.location.href);
-      debugger; // Pause so we can inspect the URL
-
-      try {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(
-          window.location.href
-        );
-
-        console.log("exchange response", { data, error });
-      } catch (err) {
-        console.error("Unexpected error:", err);
-      }
-    }
-
-    handleOAuthCallback();
-  }, []);
-
-  //
   // ⭐ Listen for auth state changes
   //
   useEffect(() => {
+    // Check for initial session on mount
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        console.log("Session check:", { hasSession: !!session, error });
+
+        if (error) {
+          console.error("Session restore error:", error);
+          // Only clear if it's a parsing/corruption error, not network errors
+          if (error.message?.includes("Invalid") || error.message?.includes("parse")) {
+            try {
+              localStorage.removeItem('sb-aaiovfryjlcdijdyknik-auth-token');
+              localStorage.removeItem('sb-aaiovfryjlcdijdyknik-auth-token-code-verifier');
+              console.log("Cleared corrupted session");
+            } catch (e) {
+              console.error("Failed to clear session:", e);
+            }
+          }
+          setLoading(false);
+          return;
+        }
+
+        if (session?.user) {
+          console.log("Restoring session for:", session.user.email);
+          loadProfile(session.user);
+        } else {
+          console.log("No session found");
+          setLoading(false);
+        }
+      })
+      .catch((error) => {
+        console.error("Session fetch exception:", error);
+        setLoading(false);
+      });
+
+    // Subscribe to auth state changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state change:", event, "hasSession:", !!session, "user:", session?.user?.email);
+
       if (session?.user) {
+        // Valid session, reload profile
         await loadProfile(session.user);
       } else {
-        setUser(null);
-        setProfile(null);
+        // No session
+        console.log("No session in auth state change");
+
+        // If it's a token refresh failure, try to get the session again
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          console.log("Token refresh returned no session, attempting recovery...");
+          try {
+            const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+            if (recoveredSession?.user) {
+              console.log("Recovered session for:", recoveredSession.user.email);
+              await loadProfile(recoveredSession.user);
+              return;
+            }
+          } catch (e) {
+            console.error("Session recovery failed:", e);
+          }
+        }
+
+        // Only clear state if it's an explicit SIGNED_OUT event
+        // Don't clear on TOKEN_REFRESHED failures (user might still be logged in)
+        if (event === 'SIGNED_OUT') {
+          console.log("User signed out, clearing state");
+          setUser(null);
+          setProfile(null);
+        }
         setLoading(false);
       }
     });

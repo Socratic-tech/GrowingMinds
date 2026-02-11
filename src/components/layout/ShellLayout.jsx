@@ -9,7 +9,12 @@ export default function ShellLayout() {
   const { profile } = useAuth();
   const isMobile = useIsMobile();
 
-  const isAdmin = profile?.role === "admin";
+  // 🚨 Prevent crash on refresh by waiting for profile to load
+  if (!profile) {
+    return <div className="text-center p-10 text-white">Loading…</div>;
+  }
+
+  const isAdmin = profile.role === "admin";
 
   const navItems = [
     { path: "/feed", label: "Feed", icon: "🏠" },
@@ -59,12 +64,11 @@ export default function ShellLayout() {
 
             {/* MOBILE LOGO */}
             {isMobile && (
-             <img
-  src="https://aaiovfryjlcdijdyknik.supabase.co/storage/v1/object/public/branding/projectlogo.png"
-  alt="Growing Minds logo"
-  className="w-28 mx-auto mt-4 opacity-95 object-contain"
-/>
-
+              <img
+                src="https://aaiovfryjlcdijdyknik.supabase.co/storage/v1/object/public/branding/projectlogo.png"
+                alt="Growing Minds logo"
+                className="w-28 mx-auto mt-4 opacity-95 object-contain"
+              />
             )}
           </div>
         </header>

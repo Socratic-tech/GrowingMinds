@@ -13,17 +13,26 @@ async function compressImage(file, maxSize = MAX_FILE_SIZE) {
   // If already under limit, return as-is
   if (file.size <= maxSize) return file;
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
+    // Add timeout to prevent hanging
+    const timeout = setTimeout(() => {
+      reject(new Error("Image compression timeout"));
+    }, 30000); // 30 second timeout
+
+    img.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error("Failed to load image"));
+    };
+
     img.onload = () => {
       let { width, height } = img;
-      let quality = 0.9;
 
-      // Scale down large images
-      const maxDim = 2048;
+      // Scale down large images more aggressively
+      const maxDim = 1920;
       if (width > maxDim || height > maxDim) {
         const ratio = Math.min(maxDim / width, maxDim / height);
         width = Math.round(width * ratio);
@@ -34,22 +43,28 @@ async function compressImage(file, maxSize = MAX_FILE_SIZE) {
       canvas.height = height;
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Iteratively reduce quality until under size limit
-      const tryCompress = (q) => {
-        canvas.toBlob(
-          (blob) => {
-            if (blob.size <= maxSize || q <= 0.1) {
-              resolve(new File([blob], file.name, { type: "image/jpeg" }));
-            } else {
-              tryCompress(q - 0.1);
-            }
-          },
-          "image/jpeg",
-          q
-        );
-      };
-
-      tryCompress(quality);
+      // Start with lower quality for faster compression
+      canvas.toBlob(
+        (blob) => {
+          clearTimeout(timeout);
+          if (blob && blob.size <= maxSize) {
+            resolve(new File([blob], file.name, { type: "image/jpeg" }));
+          } else if (blob) {
+            // If still too large, compress more
+            canvas.toBlob(
+              (blob2) => {
+                resolve(new File([blob2], file.name, { type: "image/jpeg" }));
+              },
+              "image/jpeg",
+              0.5
+            );
+          } else {
+            reject(new Error("Failed to compress image"));
+          }
+        },
+        "image/jpeg",
+        0.7
+      );
     };
 
     img.src = URL.createObjectURL(file);
@@ -68,21 +83,37 @@ export default function Feed() {
   const { showToast } = useToast();
 
   useEffect(() => {
+    console.log("Feed mounted, fetching posts...", { user: user?.email, profile: profile?.id });
     fetchPosts();
+
+    return () => {
+      console.log("Feed unmounting!");
+    };
   }, []);
 
   async function fetchPosts() {
-    const { data, error } = await supabase
-      .from("posts")
-      .select("*, profiles(email)")
-      .order("created_at", { ascending: false });
+    try {
+      console.log("Fetching posts...");
+      const { data, error } = await supabase
+        .from("posts")
+        .select("*, profiles(email)")
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      showToast({ title: "Failed to load posts", description: error.message, type: "error" });
-    } else {
-      setPosts(data || []);
+      console.log("Posts fetch result:", { count: data?.length, error });
+
+      if (error) {
+        console.error("Posts fetch error:", error);
+        showToast({ title: "Failed to load posts", description: error.message, type: "error" });
+      } else {
+        setPosts(data || []);
+      }
+    } catch (err) {
+      console.error("Posts fetch exception:", err);
+      showToast({ title: "Error loading posts", description: err.message, type: "error" });
+    } finally {
+      console.log("Setting loading to false");
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function createPost() {
@@ -94,45 +125,64 @@ export default function Feed() {
     setCreating(true);
     let url = null;
 
-    if (imageFile) {
-      // Compress image if over 5MB
-      const processedFile = await compressImage(imageFile);
-      const fileName = `${user.id}-${Date.now()}-${processedFile.name}`;
+    try {
+      if (imageFile) {
+        // Show compression feedback
+        showToast({ title: "Compressing image...", type: "info" });
 
-      console.log("Uploading file:", fileName, "Size:", processedFile.size);
+        // Compress image if over 5MB
+        const processedFile = await compressImage(imageFile);
+        const fileName = `${user.id}-${Date.now()}-${processedFile.name}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("post-image")
-        .upload(fileName, processedFile);
+        console.log("Uploading file:", fileName, "Size:", processedFile.size);
 
-      console.log("Upload result:", { uploadError });
+        showToast({ title: "Uploading image...", type: "info" });
 
-      if (uploadError) {
-        showToast({ title: "Upload failed", description: uploadError.message, type: "error" });
-        setCreating(false);
-        return;
+        const { error: uploadError } = await supabase.storage
+          .from("post-images")
+          .upload(fileName, processedFile);
+
+        console.log("Upload result:", { uploadError });
+
+        if (uploadError) {
+          showToast({
+            title: "Upload failed",
+            description: uploadError.message,
+            type: "error"
+          });
+          setCreating(false);
+          return;
+        }
+
+        const pub = supabase.storage.from("post-images").getPublicUrl(fileName);
+        url = pub.data.publicUrl;
+        console.log("Public URL:", url);
       }
 
-      const pub = supabase.storage.from("post-image").getPublicUrl(fileName);
-      url = pub.data.publicUrl;
-      console.log("Public URL:", url);
+      const { error } = await supabase.from("posts").insert({
+        user_id: user.id,
+        content,
+        image_url: url,
+      });
+
+      if (error) {
+        showToast({ title: "Post failed", description: error.message, type: "error" });
+      } else {
+        showToast({ title: "Posted successfully!", type: "success" });
+        setContent("");
+        setImageFile(null);
+        fetchPosts();
+      }
+    } catch (err) {
+      console.error("Create post error:", err);
+      showToast({
+        title: "Error creating post",
+        description: err.message,
+        type: "error"
+      });
+    } finally {
+      setCreating(false);
     }
-
-    const { error } = await supabase.from("posts").insert({
-      user_id: user.id,
-      content,
-      image_url: url,
-    });
-
-    if (error) {
-      showToast({ title: "Post failed", type: "error" });
-    } else {
-      setContent("");
-      setImageFile(null);
-      fetchPosts();
-    }
-
-    setCreating(false);
   }
 
   async function deletePost(id) {

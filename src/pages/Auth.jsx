@@ -14,17 +14,22 @@ export default function AuthPage() {
   async function handleAuth(e) {
     e.preventDefault();
 
+    console.log(`Attempting ${mode} for:`, email);
+
     const response =
       mode === "login"
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({ email, password });
 
     if (response.error) {
+      console.error("Auth error:", response.error);
       showToast({
         title: "Authentication failed",
         description: response.error.message,
         type: "error",
       });
+    } else {
+      console.log("Auth success:", response.data);
     }
   }
 
