@@ -7,44 +7,49 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const loadingProfileRef = useRef(false);
+  const loadProfilePromiseRef = useRef(null);
   const loadedUserIdRef = useRef(null);
 
   // Fetch profile for a given auth user
   const loadProfile = async (authUser, force = false) => {
-    // Prevent concurrent loads for the same user
-    if (!force && loadingProfileRef.current && loadedUserIdRef.current === authUser.id) {
-      console.log("⏭️ Skipping - already loading profile for this user");
-      return;
+    // If already loading this exact user, wait for it to complete
+    if (!force && loadProfilePromiseRef.current && loadedUserIdRef.current === authUser.id) {
+      console.log("⏭️ Waiting for existing profile load to complete");
+      return await loadProfilePromiseRef.current;
     }
 
     // Don't reload if we already loaded this user's profile
     if (!force && loadedUserIdRef.current === authUser.id && profile) {
-      console.log("✅ Skipping - profile already loaded for this user");
+      console.log("✅ Profile already loaded, skipping");
       return;
     }
 
-    console.log("Loading profile for:", authUser.email);
-    loadingProfileRef.current = true;
+    console.log("📥 Loading profile for:", authUser.email);
     loadedUserIdRef.current = authUser.id;
 
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", authUser.id)
-        .single();
+    // Create and store the loading promise so concurrent calls can await it
+    loadProfilePromiseRef.current = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", authUser.id)
+          .single();
 
-      if (error) console.error("Profile load error:", error);
+        if (error) console.error("Profile load error:", error);
 
-      setUser(authUser);
-      setProfile(data || null);
-    } catch (e) {
-      console.error("Profile fetch exception:", e);
-    } finally {
-      loadingProfileRef.current = false;
-      setLoading(false);
-    }
+        setUser(authUser);
+        setProfile(data || null);
+        console.log("✅ Profile loaded successfully");
+      } catch (e) {
+        console.error("Profile fetch exception:", e);
+      } finally {
+        loadProfilePromiseRef.current = null;
+        setLoading(false);
+      }
+    })();
+
+    return await loadProfilePromiseRef.current;
   };
 
   //
