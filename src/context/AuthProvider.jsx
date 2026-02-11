@@ -9,7 +9,15 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   // Fetch profile for a given auth user
-  const loadProfile = async (authUser) => {
+  const loadProfile = async (authUser, force = false) => {
+    // Don't reload if it's the same user and we already have their profile
+    if (!force && user?.id === authUser.id && profile) {
+      console.log("Skipping profile reload - already loaded for this user");
+      return;
+    }
+
+    console.log("Loading profile for:", authUser.email);
+
     try {
       const { data, error } = await supabase
         .from("profiles")
