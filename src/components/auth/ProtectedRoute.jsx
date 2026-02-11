@@ -16,9 +16,11 @@ export default function ProtectedRoute({ children }) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Logged in BUT profile not fetched yet
+  // Logged in BUT profile not fetched yet or failed to load
   if (!profile) {
-    return <div className="text-center p-10 text-white">Loading profile…</div>;
+    return <div className="min-h-screen bg-gradient-to-br from-teal-800 to-teal-900 flex items-center justify-center">
+      <div className="text-white text-xl font-semibold">Setting up your profile...</div>
+    </div>;
   }
 
   // User logged in but not approved (and not admin)

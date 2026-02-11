@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
@@ -8,8 +8,45 @@ export default function ResetPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(true);
   const { showToast } = useToast();
   const navigate = useNavigate();
+
+  // Manually verify the reset token on mount
+  useEffect(() => {
+    const verifyToken = async () => {
+      const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+      const accessToken = hashParams.get('access_token');
+      const type = hashParams.get('type');
+
+      if (type === 'recovery' && accessToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: hashParams.get('refresh_token') || '',
+        });
+
+        if (error) {
+          showToast({
+            title: "Invalid reset link",
+            description: "This link may have expired. Please request a new one.",
+            type: "error",
+          });
+          setTimeout(() => navigate("/auth"), 2000);
+        }
+      } else {
+        showToast({
+          title: "No reset token found",
+          description: "Please use the link from your email.",
+          type: "error",
+        });
+        setTimeout(() => navigate("/auth"), 2000);
+      }
+
+      setVerifying(false);
+    };
+
+    verifyToken();
+  }, [navigate, showToast]);
 
   async function handleReset(e) {
     e.preventDefault();
@@ -41,6 +78,14 @@ export default function ResetPassword() {
     }
 
     setLoading(false);
+  }
+
+  if (verifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-800 to-teal-900">
+        <div className="text-white text-xl font-semibold">Verifying reset link...</div>
+      </div>
+    );
   }
 
   return (

@@ -60,6 +60,32 @@ export default function AuthPage() {
     }
   }
 
+  // Password reset
+  async function handleForgotPassword() {
+    if (!email) {
+      showToast({ title: "Enter your email address first", type: "error" });
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: REDIRECT_URL.replace("/auth", "/reset-password"),
+    });
+
+    if (error) {
+      showToast({
+        title: "Reset failed",
+        description: error.message,
+        type: "error",
+      });
+    } else {
+      showToast({
+        title: "Check your email!",
+        description: "We sent you a password reset link.",
+        type: "success",
+      });
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center 
                     bg-gradient-to-br from-teal-800 to-teal-900 p-6">
@@ -119,6 +145,17 @@ export default function AuthPage() {
         </form>
 
         {/* MAGIC LINK - Temporarily disabled for HashRouter compatibility */}
+
+        {/* FORGOT PASSWORD */}
+        {mode === "login" && (
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            className="w-full text-teal-700 underline text-xs lg:text-sm hover:text-teal-900"
+          >
+            Forgot your password?
+          </button>
+        )}
 
         {/* TOGGLE MODE */}
         <button
