@@ -11,8 +11,16 @@ export function AuthProvider({ children }) {
   // Fetch profile for a given auth user
   const loadProfile = async (authUser, force = false) => {
     // Don't reload if it's the same user and we already have their profile
+    console.log("loadProfile check:", {
+      force,
+      currentUserId: user?.id,
+      newUserId: authUser.id,
+      idsMatch: user?.id === authUser.id,
+      hasProfile: !!profile
+    });
+
     if (!force && user?.id === authUser.id && profile) {
-      console.log("Skipping profile reload - already loaded for this user");
+      console.log("✅ Skipping profile reload - already loaded for this user");
       return;
     }
 

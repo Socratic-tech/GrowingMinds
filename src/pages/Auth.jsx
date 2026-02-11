@@ -118,14 +118,14 @@ export default function AuthPage() {
 
         </form>
 
-        {/* MAGIC LINK */}
-        <button
+        {/* MAGIC LINK - Disabled for HashRouter compatibility */}
+        {/* <button
           aria-label="Send a magic login link"
           onClick={handleMagicLink}
           className="w-full text-teal-700 underline text-xs lg:text-sm hover:text-teal-900"
         >
           Send me a magic login link
-        </button>
+        </button> */}
 
         {/* TOGGLE MODE */}
         <button
