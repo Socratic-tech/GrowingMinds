@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useMemo } from "react";
+import { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "../supabase/client";
 
 const AuthContext = createContext();
@@ -7,24 +7,26 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const loadingProfileRef = useRef(false);
+  const loadedUserIdRef = useRef(null);
 
   // Fetch profile for a given auth user
   const loadProfile = async (authUser, force = false) => {
-    // Don't reload if it's the same user and we already have their profile
-    console.log("loadProfile check:", {
-      force,
-      currentUserId: user?.id,
-      newUserId: authUser.id,
-      idsMatch: user?.id === authUser.id,
-      hasProfile: !!profile
-    });
+    // Prevent concurrent loads for the same user
+    if (!force && loadingProfileRef.current && loadedUserIdRef.current === authUser.id) {
+      console.log("⏭️ Skipping - already loading profile for this user");
+      return;
+    }
 
-    if (!force && user?.id === authUser.id && profile) {
-      console.log("✅ Skipping profile reload - already loaded for this user");
+    // Don't reload if we already loaded this user's profile
+    if (!force && loadedUserIdRef.current === authUser.id && profile) {
+      console.log("✅ Skipping - profile already loaded for this user");
       return;
     }
 
     console.log("Loading profile for:", authUser.email);
+    loadingProfileRef.current = true;
+    loadedUserIdRef.current = authUser.id;
 
     try {
       const { data, error } = await supabase
@@ -40,6 +42,7 @@ export function AuthProvider({ children }) {
     } catch (e) {
       console.error("Profile fetch exception:", e);
     } finally {
+      loadingProfileRef.current = false;
       setLoading(false);
     }
   };
@@ -89,7 +92,7 @@ export function AuthProvider({ children }) {
       console.log("Auth state change:", event, "hasSession:", !!session, "user:", session?.user?.email);
 
       if (session?.user) {
-        // Valid session, reload profile
+        // Valid session, reload profile (loadProfile will skip if already loading/loaded)
         await loadProfile(session.user);
       } else {
         // No session

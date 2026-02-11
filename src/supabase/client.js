@@ -69,7 +69,7 @@ const safeStorage = {
 // --- Create Supabase Client (NO OAUTH HANDLING) ---
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    detectSessionInUrl: false,   // MUST be false for HashRouter MVP
+    detectSessionInUrl: true,    // Required for magic link to work
     persistSession: true,
     autoRefreshToken: true,
     redirectTo: REDIRECT_URL,    // Used ONLY for magic link & reset flows
