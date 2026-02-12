@@ -168,6 +168,11 @@ export default function AuthPage() {
             : "Already have an account? Sign in"}
         </button>
 
+        {/* LAST UPDATED */}
+        <div className="text-center text-[10px] text-gray-400 pt-4 border-t border-gray-100">
+          Last updated: {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+        </div>
+
       </div>
     </div>
   );
