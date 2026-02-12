@@ -151,7 +151,10 @@ export default function Feed() {
 
         // Compress image if over 5MB
         const processedFile = await compressImage(imageFile);
-        const fileName = `${user.id}-${Date.now()}-${processedFile.name}`;
+
+        // Sanitize filename - remove spaces and special characters
+        const fileExt = processedFile.name.split('.').pop() || 'jpg';
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
 
         console.log("Uploading file:", fileName, "Size:", processedFile.size);
 
