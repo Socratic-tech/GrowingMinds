@@ -14,15 +14,24 @@ export default function Notifications() {
   async function loadNotifications() {
     if (!user) return;
 
-    const { data } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(10);
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
 
-    setNotifications(data || []);
-    setUnreadCount((data || []).filter(n => !n.read).length);
+      if (error) {
+        console.error("Failed to load notifications:", error);
+        return; // Fail silently - table might not exist yet
+      }
+
+      setNotifications(data || []);
+      setUnreadCount((data || []).filter(n => !n.read).length);
+    } catch (err) {
+      console.error("Notification load exception:", err);
+    }
   }
 
   // Mark notification as read
@@ -61,29 +70,42 @@ export default function Notifications() {
 
   // Load on mount and set up realtime subscription
   useEffect(() => {
+    if (!user?.id) return;
+
     loadNotifications();
 
-    // Subscribe to new notifications
-    const channel = supabase
-      .channel('notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user?.id}`
-        },
-        () => {
-          loadNotifications();
-        }
-      )
-      .subscribe();
+    // Subscribe to new notifications (fail silently if table doesn't exist)
+    let channel;
+    try {
+      channel = supabase
+        .channel('notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`
+          },
+          () => {
+            loadNotifications();
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.error("Failed to subscribe to notifications:", err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (err) {
+          console.error("Failed to unsubscribe:", err);
+        }
+      }
     };
-  }, [user]);
+  }, [user?.id]); // Only re-subscribe if user ID actually changes
 
   return (
     <div className="relative">

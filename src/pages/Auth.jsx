@@ -9,10 +9,13 @@ export default function AuthPage() {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // Email/password login or signup
   async function handleAuth(e) {
     e.preventDefault();
+    setLoading(true);
 
     console.log(`Attempting ${mode} for:`, email);
 
@@ -28,8 +31,10 @@ export default function AuthPage() {
         description: response.error.message,
         type: "error",
       });
+      setLoading(false);
     } else {
       console.log("Auth success:", response.data);
+      // Keep loading true - we're redirecting
     }
   }
 
@@ -115,31 +120,50 @@ export default function AuthPage() {
           <input
             id="email"
             type="email"
-            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl 
-                       shadow-inner text-sm lg:text-base focus-visible:ring-2 
+            autoFocus
+            autoComplete="email"
+            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl
+                       shadow-inner text-sm lg:text-base focus-visible:ring-2
                        focus-visible:ring-teal-700"
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
           />
 
-          <input
-            id="password"
-            type="password"
-            className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl 
-                       shadow-inner text-sm lg:text-base focus-visible:ring-2 
-                       focus-visible:ring-teal-700"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              className="w-full p-3 lg:p-4 pr-12 border border-gray-300 rounded-xl
+                         shadow-inner text-sm lg:text-base focus-visible:ring-2
+                         focus-visible:ring-teal-700"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+
+            {/* Show/Hide Password Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "👁️" : "👁️‍🗨️"}
+            </button>
+          </div>
 
           <Button
+            type="submit"
+            disabled={loading}
             aria-label={mode === "login" ? "Sign in" : "Create account"}
-            className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 lg:py-4 
-                       rounded-xl shadow-lg font-semibold text-sm lg:text-base"
+            className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 lg:py-4
+                       rounded-xl shadow-lg font-semibold text-sm lg:text-base disabled:opacity-50"
           >
-            {mode === "login" ? "Sign In" : "Create Account"}
+            {loading ? "⏳ Please wait..." : (mode === "login" ? "Sign In" : "Create Account")}
           </Button>
 
         </form>
