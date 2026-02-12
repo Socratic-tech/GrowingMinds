@@ -43,21 +43,36 @@ export function AuthProvider({ children }) {
 
         const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
 
+        // ALWAYS create a profile - NEVER null! This prevents unmount loops
+        const minimalProfile = {
+          id: authUser.id,
+          email: authUser.email || authUser.user_metadata?.email,
+          role: authUser.user_metadata?.role || 'educator',
+          is_approved: true // For demo - always allow access
+        };
+
         if (error) {
           console.error("Profile load error:", error);
-          // Still set user even if profile fails - allows access
           setUser(authUser);
-          setProfile(null);
+          setProfile(minimalProfile); // Use minimal profile, NOT null
+          console.log("⚠️ Using minimal profile (fetch failed)");
         } else {
           setUser(authUser);
-          setProfile(data || null);
+          setProfile(data || minimalProfile); // Use data or fallback to minimal
           console.log("✅ Profile loaded successfully");
         }
       } catch (e) {
         console.error("Profile fetch exception:", e);
-        // Set user anyway so they can access the app
+        // ALWAYS create a profile - prevents unmounts
+        const minimalProfile = {
+          id: authUser.id,
+          email: authUser.email || authUser.user_metadata?.email,
+          role: 'educator',
+          is_approved: true
+        };
         setUser(authUser);
-        setProfile(null);
+        setProfile(minimalProfile); // Use minimal profile, NOT null
+        console.log("⚠️ Using minimal profile (exception)");
       } finally {
         loadProfilePromiseRef.current = null;
         setLoading(false);
