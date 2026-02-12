@@ -44,6 +44,27 @@ export default function QA() {
 
   useEffect(() => {
     loadQuestions();
+
+    // Subscribe to new questions for live updates
+    const channel = supabase
+      .channel('questions-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'questions'
+        },
+        () => {
+          console.log("🔥 New question detected!");
+          loadQuestions();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
@@ -178,6 +199,32 @@ console.log("DELETE RESULT:", { data, error, count });
     setNewAnswer("");
     loadAnswers();
   }
+
+  // Subscribe to new answers when question is expanded
+  useEffect(() => {
+    if (!expanded) return;
+
+    const channel = supabase
+      .channel(`answers-${question.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'answers',
+          filter: `question_id=eq.${question.id}`
+        },
+        () => {
+          console.log("🔥 New answer detected!");
+          loadAnswers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [expanded, question.id]);
 
   return (
     <div

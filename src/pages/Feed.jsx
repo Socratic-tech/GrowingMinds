@@ -86,8 +86,27 @@ export default function Feed() {
     console.log("Feed mounted, fetching posts...", { user: user?.email, profile: profile?.id });
     fetchPosts();
 
+    // Subscribe to new posts for live updates
+    const channel = supabase
+      .channel('posts-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'posts'
+        },
+        (payload) => {
+          console.log("🔥 New post detected!", payload.new);
+          // Refresh posts to get the new one with profile data
+          fetchPosts();
+        }
+      )
+      .subscribe();
+
     return () => {
       console.log("Feed unmounting!");
+      supabase.removeChannel(channel);
     };
   }, []);
 
