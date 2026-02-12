@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthProvider";
 import Sidebar from "./Sidebar";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import Notifications from "../Notifications";
 
 export default function ShellLayout() {
   const navigate = useNavigate();
@@ -57,9 +58,12 @@ export default function ShellLayout() {
                 Growing Minds
               </h1>
 
-              <span className="px-3 py-1 text-xs lg:text-sm bg-white/20 rounded-full uppercase">
-                {isAdmin ? "ADMIN" : "EDUCATOR"}
-              </span>
+              <div className="flex items-center gap-3">
+                <Notifications />
+                <span className="px-3 py-1 text-xs lg:text-sm bg-white/20 rounded-full uppercase">
+                  {isAdmin ? "ADMIN" : "EDUCATOR"}
+                </span>
+              </div>
             </div>
 
             {/* MOBILE LOGO */}
