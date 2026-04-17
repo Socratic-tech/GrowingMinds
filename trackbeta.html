@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Gardyn Classroom Master Tracker 2026</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; margin: 20px; }
+        .container { max-width: 1100px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #2e7d32; border-bottom: 2px solid #2e7d32; padding-bottom: 10px; }
+        .setup-box { background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2e7d32; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { background-color: #2e7d32; color: white; padding: 12px; text-align: left; }
+        td { padding: 12px; border-bottom: 1px solid #ddd; }
+        select, input { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        .zone-red { background-color: #ffebee; color: #c62828; font-weight: bold; }
+        .zone-orange { background-color: #fff3e0; color: #ef6c00; font-weight: bold; }
+        .zone-yellow { background-color: #fffde7; color: #fbc02d; font-weight: bold; }
+        .print-btn { background: #2e7d32; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; float: right; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <button class="print-btn" onclick="window.print()">Print Garden Map</button>
+    <h1>Gardyn Educator Master Tracker 2.0</h1>
+    
+    <div class="setup-box">
+        <strong>Teacher Setup:</strong> Select your plants in the "Plant Name" column. The 2026 Magic Formulas will automatically calculate Light Zones, Sprout Doses, and Harvest Dates based on current Gardyn data.
+    </div>
+
+    <table id="trackerTable">
+        <thead>
+            <tr>
+                <th>Slot</th>
+                <th>Plant Name</th>
+                <th>Date Planted</th>
+                <th>Light Zone</th>
+                <th>Sprout Dose Due</th>
+                <th>Exp. Harvest</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            </tbody>
+    </table>
+</div>
+
+<script>
+    const plantDb = {
+        "Breen Lettuce": { zone: "Orange (Med)", germ: 7, harvest: 30 },
+        "Cherry Tomato": { zone: "Red (High)", germ: 14, harvest: 75 },
+        "Mini Cucumber": { zone: "Red (High)", germ: 10, harvest: 55 },
+        "Thai Basil": { zone: "Orange (Med)", germ: 10, harvest: 40 },
+        "Tokyo Bekana": { zone: "Yellow (Low)", germ: 7, harvest: 25 },
+        "Dragon Beans": { zone: "Red (High)", germ: 10, harvest: 50 },
+        "Cape Gooseberry": { zone: "Red (High)", germ: 21, harvest: 100 },
+        "Pink Celery": { zone: "Orange (Med)", germ: 21, harvest: 60 },
+        "Jalapeño": { zone: "Red (High)", germ: 21, harvest: 85 },
+        "Mint": { zone: "Yellow (Low)", germ: 21, harvest: 60 }
+    };
+
+    const slots = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]; // Sample slots
+
+    function initTable() {
+        const body = document.getElementById('tableBody');
+        slots.forEach((slot, index) => {
+            let row = body.insertRow();
+            row.innerHTML = `
+                <td>${slot}</td>
+                <td>
+                    <select onchange="updateRow(this, ${index})">
+                        <option value="">-- Select Plant --</option>
+                        ${Object.keys(plantDb).map(p => `<option value="${p}">${p}</option>`).join('')}
+                    </select>
+                </td>
+                <td><input type="date" onchange="updateRow(this, ${index})"></td>
+                <td class="zone-cell">-</td>
+                <td class="sprout-cell">-</td>
+                <td class="harvest-cell">-</td>
+            `;
+        });
+    }
+
+    function updateRow(el, index) {
+        const row = el.closest('tr');
+        const plantName = row.cells[1].querySelector('select').value;
+        const dateVal = row.cells[2].querySelector('input').value;
+        
+        if (plantName && plantDb[plantName]) {
+            const data = plantDb[plantName];
+            
+            // Update Zone
+            const zoneCell = row.cells[3];
+            zoneCell.innerText = data.zone;
+            zoneCell.className = 'zone-cell ' + (data.zone.includes("Red") ? 'zone-red' : data.zone.includes("Orange") ? 'zone-orange' : 'zone-yellow');
+            
+            if (dateVal) {
+                const plantedDate = new Date(dateVal);
+                
+                // Sprout Dose (Planted + 14 days)
+                let sproutDate = new Date(plantedDate);
+                sproutDate.setDate(sproutDate.getDate() + 14);
+                row.cells[4].innerText = sproutDate.toLocaleDateString();
+                
+                // Harvest Date
+                let harvestDate = new Date(plantedDate);
+                harvestDate.setDate(harvestDate.getDate() + data.harvest);
+                row.cells[5].innerText = harvestDate.toLocaleDateString();
+            }
+        }
+    }
+
+    initTable();
+</script>
+
+</body>
+</html>
