@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import RichEditor from "../components/ui/RichEditor";
+import { FeedSkeleton } from "../components/ui/Skeleton";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const PAGE_SIZE = 20;
 
 // Compress image to target size
 async function compressImage(file, maxSize = MAX_FILE_SIZE) {
@@ -25,10 +28,12 @@ async function compressImage(file, maxSize = MAX_FILE_SIZE) {
 
     img.onerror = () => {
       clearTimeout(timeout);
+      URL.revokeObjectURL(img.src);
       reject(new Error("Failed to load image"));
     };
 
     img.onload = () => {
+      URL.revokeObjectURL(img.src);
       let { width, height } = img;
 
       // Scale down large images more aggressively
@@ -76,62 +81,70 @@ export default function Feed() {
   const isAdmin = profile?.role === "admin";
 
   const [posts, setPosts] = useState([]);
+  const [page, setPage] = useState(0);       // next page index to load
+  const [hasMore, setHasMore] = useState(true);
   const [content, setContent] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
-    console.log("Feed mounted, fetching posts...", { user: user?.email, profile: profile?.id });
-    fetchPosts();
+    fetchPosts(0);
 
-    // Subscribe to new posts for live updates
+    // Subscribe to new posts — prepend directly instead of full reload
     const channel = supabase
       .channel('posts-channel')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'posts'
-        },
-        (payload) => {
-          console.log("🔥 New post detected!", payload.new);
-          // Refresh posts to get the new one with profile data
-          fetchPosts();
+        { event: 'INSERT', schema: 'public', table: 'posts' },
+        async (payload) => {
+          // Fetch the new post with profile data and prepend it
+          const { data } = await supabase
+            .from("posts")
+            .select("*, profiles(email)")
+            .eq("id", payload.new.id)
+            .single();
+          if (data) setPosts((prev) => [data, ...prev]);
         }
       )
       .subscribe();
 
-    return () => {
-      console.log("Feed unmounting!");
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
-  async function fetchPosts() {
+  async function fetchPosts(pageNum) {
+    const from = pageNum * PAGE_SIZE;
+    const to   = from + PAGE_SIZE - 1;
+
+    if (pageNum === 0) setLoading(true);
+    else setLoadingMore(true);
+
     try {
-      console.log("Fetching posts...");
       const { data, error } = await supabase
         .from("posts")
         .select("*, profiles(email)")
-        .order("created_at", { ascending: false });
-
-      console.log("Posts fetch result:", { count: data?.length, error });
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (error) {
-        console.error("Posts fetch error:", error);
         showToast({ title: "Failed to load posts", description: error.message, type: "error" });
       } else {
-        setPosts(data || []);
+        const newPosts = data || [];
+        setPosts((prev) => {
+          if (pageNum === 0) return newPosts;
+          const seen = new Set(prev.map((p) => p.id));
+          return [...prev, ...newPosts.filter((p) => !seen.has(p.id))];
+        });
+        setPage(pageNum + 1);
+        setHasMore(newPosts.length === PAGE_SIZE);
       }
     } catch (err) {
-      console.error("Posts fetch exception:", err);
       showToast({ title: "Error loading posts", description: err.message, type: "error" });
     } finally {
-      console.log("Setting loading to false");
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
@@ -156,15 +169,11 @@ export default function Feed() {
         const fileExt = processedFile.name.split('.').pop() || 'jpg';
         const fileName = `${user.id}-${Date.now()}.${fileExt}`;
 
-        console.log("Uploading file:", fileName, "Size:", processedFile.size);
-
         showToast({ title: "Uploading image...", type: "info" });
 
         const { error: uploadError } = await supabase.storage
           .from("post-images")
           .upload(fileName, processedFile);
-
-        console.log("Upload result:", { uploadError });
 
         if (uploadError) {
           showToast({
@@ -178,7 +187,6 @@ export default function Feed() {
 
         const pub = supabase.storage.from("post-images").getPublicUrl(fileName);
         url = pub.data.publicUrl;
-        console.log("Public URL:", url);
       }
 
       const { error } = await supabase.from("posts").insert({
@@ -193,7 +201,7 @@ export default function Feed() {
         showToast({ title: "Posted successfully!", type: "success" });
         setContent("");
         setImageFile(null);
-        fetchPosts();
+        fetchPosts(0);
       }
     } catch (err) {
       console.error("Create post error:", err);
@@ -207,15 +215,15 @@ export default function Feed() {
     }
   }
 
-  async function deletePost(id) {
+  const deletePost = useCallback(async (id) => {
     if (!confirm("Delete this post?")) return;
     const { error } = await supabase.from("posts").delete().eq("id", id);
     if (error) {
       showToast({ title: "Failed to delete post", description: error.message, type: "error" });
     } else {
-      fetchPosts();
+      fetchPosts(0);
     }
-  }
+  }, []);
 
   return (
     <div className="space-y-10">
@@ -272,7 +280,7 @@ export default function Feed() {
 
       {/* POSTS */}
       {loading ? (
-        <p className="text-center text-gray-400">Loading feed…</p>
+        <FeedSkeleton />
       ) : (
         <div className="space-y-10 pb-24">
           {posts.map((post) => (
@@ -281,9 +289,30 @@ export default function Feed() {
               post={post}
               user={user}
               isAdmin={isAdmin}
-              onDelete={() => deletePost(post.id)}
+              onDelete={deletePost}
             />
           ))}
+
+          {/* LOAD MORE */}
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button
+                onClick={() => fetchPosts(page)}
+                disabled={loadingMore}
+                className="bg-white border border-teal-700 text-teal-700 hover:bg-teal-50
+                           px-8 py-3 rounded-xl shadow font-semibold text-sm lg:text-base
+                           disabled:opacity-50"
+              >
+                {loadingMore ? "Loading…" : "Load more posts"}
+              </Button>
+            </div>
+          )}
+
+          {!hasMore && posts.length > 0 && (
+            <p className="text-center text-xs text-gray-400 pb-4">
+              You've reached the end of the feed
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -293,10 +322,12 @@ export default function Feed() {
 /* --------------------
    POST CARD
 -------------------- */
-function PostCard({ post, user, isAdmin, onDelete }) {
+const PostCard = memo(function PostCard({ post, user, isAdmin, onDelete }) {
+  const navigate = useNavigate();
+
   return (
     <div
-      className="bg-white rounded-3xl lg:rounded-2xl p-6 shadow-lg 
+      className="bg-white rounded-3xl lg:rounded-2xl p-6 shadow-lg
                  border border-gray-200 space-y-5"
       role="region"
       aria-label={`Post by ${post.profiles?.email}`}
@@ -304,19 +335,25 @@ function PostCard({ post, user, isAdmin, onDelete }) {
       <div className="flex items-start gap-3">
 
         {/* Avatar */}
-        <div
-          aria-hidden="true"
-          className="w-10 h-10 rounded-full bg-teal-700 text-white flex items-center 
-                     justify-center font-bold text-sm"
+        <button
+          aria-label={`View profile of ${post.profiles?.email?.split("@")[0]}`}
+          onClick={() => navigate(`/profile/${post.user_id}`)}
+          className="w-10 h-10 rounded-full bg-teal-700 text-white flex items-center
+                     justify-center font-bold text-sm flex-shrink-0 hover:opacity-80
+                     transition-opacity focus-visible:ring-2 focus-visible:ring-teal-500"
         >
           {post.profiles?.email?.charAt(0).toUpperCase()}
-        </div>
+        </button>
 
         {/* Author + Date */}
         <div className="flex flex-col">
-          <p className="font-semibold text-teal-800 text-sm lg:text-base">
+          <button
+            onClick={() => navigate(`/profile/${post.user_id}`)}
+            className="font-semibold text-teal-800 text-sm lg:text-base text-left
+                       hover:underline focus-visible:underline"
+          >
             {post.profiles?.email?.split("@")[0]}
-          </p>
+          </button>
           <p className="text-[10px] lg:text-xs text-gray-500">
             {new Date(post.created_at).toLocaleDateString()}
           </p>
@@ -328,7 +365,7 @@ function PostCard({ post, user, isAdmin, onDelete }) {
             aria-label="Delete post"
             onClick={(e) => {
               e.stopPropagation();
-              onDelete();
+              onDelete(post.id);
             }}
             className="ml-auto w-10 h-10 flex items-center justify-center rounded-xl
                        text-red-500 hover:text-red-700 text-lg focus-visible:ring-2 
@@ -350,6 +387,7 @@ function PostCard({ post, user, isAdmin, onDelete }) {
         <img
           src={post.image_url}
           alt=""
+          loading="lazy"
           className="rounded-3xl lg:rounded-2xl border border-gray-200 shadow-md"
         />
       )}
@@ -358,13 +396,14 @@ function PostCard({ post, user, isAdmin, onDelete }) {
       <CommentSection postId={post.id} user={user} isAdmin={isAdmin} />
     </div>
   );
-}
+});
 
 /* --------------------
    COMMENT SECTION
 -------------------- */
 function CommentSection({ postId, user, isAdmin }) {
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
 
@@ -397,7 +436,7 @@ function CommentSection({ postId, user, isAdmin }) {
     });
 
     if (error) {
-      showToast({ title: "Failed to post comment", type: "error" });
+      showToast({ title: "Failed to post comment", description: error.message, type: "error" });
     } else {
       setText("");
       loadComments();
@@ -427,9 +466,13 @@ function CommentSection({ postId, user, isAdmin }) {
           role="group"
           aria-label={`Comment by ${c.profiles?.email}`}
         >
-          <p className="text-xs lg:text-sm font-semibold text-teal-800">
+          <button
+            onClick={() => navigate(`/profile/${c.user_id}`)}
+            className="text-xs lg:text-sm font-semibold text-teal-800 hover:underline
+                       text-left focus-visible:underline"
+          >
             {c.profiles?.email?.split("@")[0]}
-          </p>
+          </button>
 
           <p className="text-sm lg:text-base text-gray-700">{c.content}</p>
 

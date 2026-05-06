@@ -3,6 +3,7 @@ import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthProvider";
 import { useToast } from "../components/ui/toast";
+import { LibrarySkeleton } from "../components/ui/Skeleton";
 
 export default function Library() {
   const { profile } = useAuth();
@@ -10,18 +11,29 @@ export default function Library() {
   const { showToast } = useToast();
 
   const [resources, setResources] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [category, setCategory] = useState("Guide");
 
   async function loadResources() {
-    const { data } = await supabase
-      .from("resources")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("resources")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    setResources(data || []);
+      if (error) {
+        showToast({ title: "Failed to load resources", description: error.message, type: "error" });
+      } else {
+        setResources(data || []);
+      }
+    } catch (err) {
+      showToast({ title: "Error loading resources", description: err.message, type: "error" });
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -56,8 +68,12 @@ export default function Library() {
 
   async function deleteResource(id) {
     if (!confirm("Delete this resource?")) return;
-    await supabase.from("resources").delete().eq("id", id);
-    loadResources();
+    const { error } = await supabase.from("resources").delete().eq("id", id);
+    if (error) {
+      showToast({ title: "Failed to delete resource", description: error.message, type: "error" });
+    } else {
+      loadResources();
+    }
   }
 
   return (
@@ -159,8 +175,12 @@ export default function Library() {
       )}
 
       {/* RESOURCE LIST */}
+      {loading ? (
+        <LibrarySkeleton />
+      ) : null}
+
       <div className="space-y-4 pb-24">
-        {resources.map((r) => (
+        {!loading && resources.map((r) => (
           <div
             key={r.id}
             className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-gray-200 

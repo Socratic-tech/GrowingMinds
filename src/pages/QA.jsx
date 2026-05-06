@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
+import { QASkeleton } from "../components/ui/Skeleton";
 
 export default function QA() {
   const { user, profile } = useAuth();
@@ -10,17 +12,28 @@ export default function QA() {
   const { showToast } = useToast();
 
   const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showAsk, setShowAsk] = useState(false);
   const [title, setTitle] = useState("");
 
   /* Load questions */
   async function loadQuestions() {
-    const { data } = await supabase
-      .from("questions")
-      .select("*, profiles(email)")
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("questions")
+        .select("*, profiles(email)")
+        .order("created_at", { ascending: false });
 
-    setQuestions(data || []);
+      if (error) {
+        showToast({ title: "Failed to load questions", description: error.message, type: "error" });
+      } else {
+        setQuestions(data || []);
+      }
+    } catch (err) {
+      showToast({ title: "Error loading questions", description: err.message, type: "error" });
+    } finally {
+      setLoading(false);
+    }
   }
 
   /* Ask question */
@@ -55,9 +68,13 @@ export default function QA() {
           schema: 'public',
           table: 'questions'
         },
-        () => {
-          console.log("🔥 New question detected!");
-          loadQuestions();
+        async (payload) => {
+          const { data } = await supabase
+            .from("questions")
+            .select("*, profiles(email)")
+            .eq("id", payload.new.id)
+            .single();
+          if (data) setQuestions((prev) => [data, ...prev]);
         }
       )
       .subscribe();
@@ -126,7 +143,10 @@ export default function QA() {
       )}
 
       {/* Questions List */}
-      <div className="space-y-4">
+      {loading ? (
+        <QASkeleton />
+      ) : (
+      <div className="space-y-4 pb-24">
         {questions.map((q) => (
           <QuestionCard
             key={q.id}
@@ -139,6 +159,7 @@ export default function QA() {
           />
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -147,31 +168,33 @@ export default function QA() {
    QUESTION CARD COMPONENT
 -----------------------------------*/
 function QuestionCard({ question, user, isAdmin, onDelete }) {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const [answers, setAnswers] = useState([]);
   const [newAnswer, setNewAnswer] = useState("");
   const { showToast } = useToast();
 
   async function loadAnswers() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("answers")
       .select("*, profiles(email)")
       .eq("question_id", question.id)
       .order("created_at", { ascending: true });
 
-    setAnswers(data || []);
+    if (error) {
+      showToast({ title: "Failed to load answers", description: error.message, type: "error" });
+    } else {
+      setAnswers(data || []);
+    }
   }
 
   async function deleteQuestion() {
     if (!confirm("Delete this question?")) return;
 
-    const { data, error, count } = await supabase
-  .from("questions")
-  .delete({ count: "exact" })
-  .eq("id", question.id);
-
-console.log("DELETE RESULT:", { data, error, count });
-
+    const { error } = await supabase
+      .from("questions")
+      .delete()
+      .eq("id", question.id);
 
     if (!error) {
       onDelete();
@@ -182,19 +205,28 @@ console.log("DELETE RESULT:", { data, error, count });
   }
 
   async function deleteAnswer(id) {
-    await supabase.from("answers").delete().eq("id", id);
-    loadAnswers();
+    const { error } = await supabase.from("answers").delete().eq("id", id);
+    if (error) {
+      showToast({ title: "Failed to delete answer", description: error.message, type: "error" });
+    } else {
+      loadAnswers();
+    }
   }
 
   async function submitAnswer(e) {
     e.preventDefault();
     if (!newAnswer.trim()) return;
 
-    await supabase.from("answers").insert({
+    const { error } = await supabase.from("answers").insert({
       question_id: question.id,
       user_id: user.id,
       content: newAnswer,
     });
+
+    if (error) {
+      showToast({ title: "Failed to post answer", description: error.message, type: "error" });
+      return;
+    }
 
     setNewAnswer("");
     loadAnswers();
@@ -214,9 +246,13 @@ console.log("DELETE RESULT:", { data, error, count });
           table: 'answers',
           filter: `question_id=eq.${question.id}`
         },
-        () => {
-          console.log("🔥 New answer detected!");
-          loadAnswers();
+        async (payload) => {
+          const { data } = await supabase
+            .from("answers")
+            .select("*, profiles(email)")
+            .eq("id", payload.new.id)
+            .single();
+          if (data) setAnswers((prev) => [...prev, data]);
         }
       )
       .subscribe();
@@ -290,7 +326,12 @@ console.log("DELETE RESULT:", { data, error, count });
                          uppercase font-bold text-[10px] lg:text-xs">
           Question
         </span>
-        <span>{question.profiles?.email?.split("@")[0]}</span>
+        <button
+          onClick={() => navigate(`/profile/${question.user_id}`)}
+          className="hover:underline focus-visible:underline text-left"
+        >
+          {question.profiles?.email?.split("@")[0]}
+        </button>
       </div>
 
       {/* Answer Section */}
