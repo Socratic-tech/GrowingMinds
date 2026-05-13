@@ -9,6 +9,11 @@ const COLUMNS = ["A", "B", "C"];
 const ROWS    = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const ALL_SLOT_IDS = COLUMNS.flatMap((col) => ROWS.map((row) => `${col}${row}`));
 
+const SLOT_LIGHT_ZONE = {
+  A1: "Med Sun",
+  A8: "Low Sun",
+};
+
 const STATUSES = ["Empty", "Germinating", "Growing", "Ready to Harvest", "Monitor"];
 
 const STATUS_STYLE = {
@@ -43,11 +48,11 @@ export default function Tracker() {
   const { user }     = useAuth();
   const { showToast } = useToast();
 
-  const [slots,      setSlots]      = useState({});   // { slotId: slot }
-  const [plants,     setPlants]     = useState([]);   // plant catalog
+  const [slots,      setSlots]      = useState({});
+  const [plants,     setPlants]     = useState([]);
   const [loading,    setLoading]    = useState(true);
-  const [editSlot,   setEditSlot]   = useState(null); // slot_id string | null
-  const [viewMode,   setViewMode]   = useState("grid"); // "grid" | "list"
+  const [editSlot,   setEditSlot]   = useState(null);
+  const [viewMode,   setViewMode]   = useState("grid");
 
   /* ── Load plants + slots ─────────────────────────────────── */
   const loadData = useCallback(async () => {
@@ -68,7 +73,6 @@ export default function Tracker() {
       return;
     }
 
-    // Build slot map — seed any missing slots as Empty
     const existing = {};
     (slotRes.data || []).forEach((s) => { existing[s.slot_id] = s; });
 
@@ -81,6 +85,7 @@ export default function Tracker() {
         .from("tracker_slots")
         .insert(toInsert)
         .select();
+
       if (!seedErr && seeded) {
         seeded.forEach((s) => { existing[s.slot_id] = s; });
       }
@@ -201,6 +206,8 @@ export default function Tracker() {
                       const slot  = slots[id];
                       const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
                       const plant = plantMap[slot?.plant_name];
+                      const slotLightZone = SLOT_LIGHT_ZONE[id];
+
                       const harvestEta = plant && slot?.date_planted
                         ? addDays(slot.date_planted, plant.harvest_days)
                         : null;
@@ -210,7 +217,7 @@ export default function Tracker() {
                           key={id}
                           onClick={() => setEditSlot(editSlot === id ? null : id)}
                           aria-expanded={editSlot === id}
-                          aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""}`}
+                          aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""}${slotLightZone ? ` · ${slotLightZone}` : ""}`}
                           className={`text-left p-3 rounded-2xl border transition-all
                                       hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-700
                                       ${style.bg} ${style.border}
@@ -220,14 +227,23 @@ export default function Tracker() {
                             <span className="text-[10px] font-bold text-gray-400">{id}</span>
                             <span className={`w-2 h-2 rounded-full ${style.dot}`} aria-hidden="true" />
                           </div>
+
                           <p className={`text-xs font-semibold leading-tight ${style.text} line-clamp-2`}>
                             {slot?.plant_name || "Empty"}
                           </p>
+
+                          {slotLightZone && (
+                            <p className="text-[10px] text-gray-500 mt-1">
+                              ☀️ {slotLightZone}
+                            </p>
+                          )}
+
                           {harvestEta && (
                             <p className="text-[10px] text-gray-400 mt-1">
                               🌾 {formatDate(harvestEta)}
                             </p>
                           )}
+
                           {slot?.student_team && (
                             <p className="text-[10px] text-gray-400 mt-0.5 truncate">
                               👤 {slot.student_team}
@@ -249,6 +265,8 @@ export default function Tracker() {
                 const slot  = slots[id];
                 const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
                 const plant = plantMap[slot?.plant_name];
+                const slotLightZone = SLOT_LIGHT_ZONE[id];
+
                 const harvestEta = plant && slot?.date_planted
                   ? addDays(slot.date_planted, plant.harvest_days)
                   : null;
@@ -258,7 +276,7 @@ export default function Tracker() {
                     key={id}
                     onClick={() => setEditSlot(editSlot === id ? null : id)}
                     aria-expanded={editSlot === id}
-                    aria-label={`Slot ${id}`}
+                    aria-label={`Slot ${id}${slotLightZone ? ` · ${slotLightZone}` : ""}`}
                     className={`w-full text-left flex items-center gap-3 px-4 py-3
                                 rounded-2xl border transition-all hover:shadow-sm
                                 focus-visible:ring-2 focus-visible:ring-teal-700
@@ -267,19 +285,29 @@ export default function Tracker() {
                   >
                     <span className="text-xs font-bold text-gray-400 w-6 flex-shrink-0">{id}</span>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${style.dot}`} aria-hidden="true" />
+
                     <span className={`text-sm font-semibold flex-1 ${style.text}`}>
                       {slot?.plant_name || <span className="text-gray-400 font-normal">Empty</span>}
                     </span>
+
+                    {slotLightZone && (
+                      <span className="text-[10px] text-gray-500 hidden sm:inline">
+                        ☀️ {slotLightZone}
+                      </span>
+                    )}
+
                     {slot?.student_team && (
                       <span className="text-[10px] text-gray-400 hidden sm:inline">
                         {slot.student_team}
                       </span>
                     )}
+
                     {harvestEta && (
                       <span className="text-[10px] text-gray-400">
                         🌾 {formatDate(harvestEta)}
                       </span>
                     )}
+
                     {slot?.date_planted && (
                       <span className="text-[10px] text-gray-400 hidden sm:inline">
                         day {daysAgo(slot.date_planted)}
@@ -300,6 +328,7 @@ export default function Tracker() {
               plantMap={plantMap}
               onSave={saveSlot}
               onClose={() => setEditSlot(null)}
+              slotLightZone={SLOT_LIGHT_ZONE[editSlot]}
             />
           )}
         </>
@@ -309,7 +338,7 @@ export default function Tracker() {
 }
 
 /* ─── Slot Edit Panel ────────────────────────────────────── */
-function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose }) {
+function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLightZone }) {
   const [form, setForm] = useState({
     plant_name:        slot.plant_name || "",
     date_planted:      slot.date_planted || "",
@@ -348,9 +377,18 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose }) {
       aria-label={`Edit slot ${slotId}`}
     >
       <div className="flex items-center justify-between">
-        <h2 className="font-bold text-teal-800 text-base lg:text-lg">
-          Edit Slot {slotId}
-        </h2>
+        <div>
+          <h2 className="font-bold text-teal-800 text-base lg:text-lg">
+            Edit Slot {slotId}
+          </h2>
+
+          {slotLightZone && (
+            <p className="text-xs text-gray-500 mt-0.5">
+              ☀️ {slotLightZone}
+            </p>
+          )}
+        </div>
+
         <button
           onClick={onClose}
           aria-label="Close edit panel"
