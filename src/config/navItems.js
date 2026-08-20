@@ -5,6 +5,7 @@
 export function getNavItems(isAdmin) {
   const items = [
     { path: "/feed", label: "Feed", icon: "🏠" },
+    { path: "/gardyn", label: "Gardyn", icon: "🌿" },
     { path: "/library", label: "Library", icon: "📚" },
     { path: "/qa", label: "Q&A", icon: "❓" },
   ];
