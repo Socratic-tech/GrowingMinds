@@ -1,18 +1,11 @@
 import { supabase } from "../../supabase/client";
 import { useAuth } from "../../context/AuthProvider";
+import { getNavItems } from "../../config/navItems";
 
 export default function Sidebar({ navigate, isAdmin }) {
   const { profile } = useAuth();
 
-  const items = [
-    { label: "Feed", path: "/feed", icon: "🏠" },
-    { label: "Library", path: "/library", icon: "📚" },
-    { label: "Q&A", path: "/qa", icon: "❓" },
-  ];
-
-  if (isAdmin) {
-    items.push({ label: "Admin", path: "/admin", icon: "🛡️" });
-  }
+  const items = getNavItems(isAdmin);
 
   return (
     <nav

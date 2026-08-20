@@ -16,9 +16,13 @@ export default function ProtectedRoute({ children }) {
     return <Navigate to="/auth" replace />;
   }
 
-  // User logged in but not approved (and not admin)
-  // Allow access even if profile is null (for demo - better than getting stuck)
-  if (profile && profile.role !== "admin" && profile.is_approved !== true) {
+  // User logged in but not approved (and not admin).
+  // Fail closed: if the profile hasn't loaded yet for some reason, treat the
+  // user as unapproved rather than letting them through. AuthProvider always
+  // finishes `loading` with a profile object (real or a safe unapproved
+  // fallback), so `profile` should never be null here - but if it somehow is,
+  // routing to /pending is the safe outcome, not routing past the gate.
+  if (!profile || (profile.role !== "admin" && profile.is_approved !== true)) {
     return <Navigate to="/pending" replace />;
   }
 

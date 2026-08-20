@@ -3,6 +3,11 @@ import { supabase } from "../supabase/client";
 
 const AuthContext = createContext();
 
+// Verbose diagnostic logging only runs in local dev builds, never in the
+// production bundle deployed to educators.
+const isDev = import.meta.env.DEV;
+const devLog = (...args) => { if (isDev) console.log(...args); };
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -14,17 +19,17 @@ export function AuthProvider({ children }) {
   const loadProfile = async (authUser, force = false) => {
     // If already loading this exact user, wait for it to complete
     if (!force && loadProfilePromiseRef.current && loadedUserIdRef.current === authUser.id) {
-      console.log("⏭️ Waiting for existing profile load to complete");
+      devLog("⏭️ Waiting for existing profile load to complete");
       return await loadProfilePromiseRef.current;
     }
 
     // Don't reload if we already loaded this user's profile
     if (!force && loadedUserIdRef.current === authUser.id && profile) {
-      console.log("✅ Profile already loaded, skipping");
+      devLog("✅ Profile already loaded, skipping");
       return;
     }
 
-    console.log("📥 Loading profile for:", authUser.email);
+    devLog("📥 Loading profile for:", authUser.id);
     loadedUserIdRef.current = authUser.id;
 
     // Create and store the loading promise so concurrent calls can await it
@@ -43,40 +48,45 @@ export function AuthProvider({ children }) {
 
         const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
 
-        // ALWAYS create a profile - NEVER null! This prevents unmount loops
+        // ALWAYS create a profile object - NEVER null! This prevents unmount loops
+        // in ProtectedRoute/ShellLayout. IMPORTANT: this fallback profile is
+        // UNAPPROVED by default. A failed or timed-out fetch must never grant
+        // access - it should route the user to /pending instead, the same as
+        // a genuinely new, not-yet-approved account. Approval only ever comes
+        // from a real row in `profiles` with is_approved = true.
         const minimalProfile = {
           id: authUser.id,
           email: authUser.email || authUser.user_metadata?.email,
           role: authUser.user_metadata?.role || 'educator',
-          is_approved: true // For demo - always allow access
+          is_approved: false,
         };
 
         if (error) {
-          console.error("Profile load error:", error);
+          console.error("Profile load error:", error.message || error);
           setUser(authUser);
-          setProfile(minimalProfile); // Use minimal profile, NOT null
-          console.log("⚠️ Using minimal profile (fetch failed)");
+          setProfile(minimalProfile); // Use minimal (unapproved) profile, NOT null
+          devLog("⚠️ Using minimal profile (fetch failed) - routing to pending");
         } else {
           setUser(authUser);
-          setProfile(data || minimalProfile); // Use data or fallback to minimal
-          console.log("✅ Profile loaded successfully");
+          setProfile(data || minimalProfile); // Use real data, or fail-closed fallback
+          devLog("✅ Profile loaded successfully");
         }
       } catch (e) {
-        console.error("Profile fetch exception:", e);
-        // ALWAYS create a profile - prevents unmounts
+        console.error("Profile fetch exception:", e?.message || e);
+        // ALWAYS create a profile - prevents unmounts. Fails closed (unapproved).
         const minimalProfile = {
           id: authUser.id,
           email: authUser.email || authUser.user_metadata?.email,
           role: 'educator',
-          is_approved: true
+          is_approved: false,
         };
         setUser(authUser);
-        setProfile(minimalProfile); // Use minimal profile, NOT null
-        console.log("⚠️ Using minimal profile (exception)");
+        setProfile(minimalProfile);
+        devLog("⚠️ Using minimal profile (exception) - routing to pending");
       } finally {
         loadProfilePromiseRef.current = null;
         setLoading(false);
-        console.log("Profile load complete");
+        devLog("Profile load complete");
       }
     })();
 
@@ -90,18 +100,18 @@ export function AuthProvider({ children }) {
     // Check for initial session on mount
     supabase.auth.getSession()
       .then(({ data: { session }, error }) => {
-        console.log("Session check:", { hasSession: !!session, error });
+        devLog("Session check:", { hasSession: !!session, error });
 
         if (error) {
-          console.error("Session restore error:", error);
+          console.error("Session restore error:", error.message || error);
           // Only clear if it's a parsing/corruption error, not network errors
           if (error.message?.includes("Invalid") || error.message?.includes("parse")) {
             try {
               localStorage.removeItem('sb-aaiovfryjlcdijdyknik-auth-token');
               localStorage.removeItem('sb-aaiovfryjlcdijdyknik-auth-token-code-verifier');
-              console.log("Cleared corrupted session");
+              devLog("Cleared corrupted session");
             } catch (e) {
-              console.error("Failed to clear session:", e);
+              console.error("Failed to clear session:", e?.message || e);
             }
           }
           setLoading(false);
@@ -109,15 +119,15 @@ export function AuthProvider({ children }) {
         }
 
         if (session?.user) {
-          console.log("Restoring session for:", session.user.email);
+          devLog("Restoring session for:", session.user.id);
           loadProfile(session.user);
         } else {
-          console.log("No session found");
+          devLog("No session found");
           setLoading(false);
         }
       })
       .catch((error) => {
-        console.error("Session fetch exception:", error);
+        console.error("Session fetch exception:", error?.message || error);
         setLoading(false);
       });
 
@@ -125,34 +135,34 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth state change:", event, "hasSession:", !!session, "user:", session?.user?.email);
+      devLog("Auth state change:", event, "hasSession:", !!session);
 
       if (session?.user) {
         // Valid session, reload profile (loadProfile will skip if already loading/loaded)
         await loadProfile(session.user);
       } else {
         // No session
-        console.log("No session in auth state change");
+        devLog("No session in auth state change");
 
         // If it's a token refresh failure, try to get the session again
         if (event === 'TOKEN_REFRESHED' && !session) {
-          console.log("Token refresh returned no session, attempting recovery...");
+          devLog("Token refresh returned no session, attempting recovery...");
           try {
             const { data: { session: recoveredSession } } = await supabase.auth.getSession();
             if (recoveredSession?.user) {
-              console.log("Recovered session for:", recoveredSession.user.email);
+              devLog("Recovered session for:", recoveredSession.user.id);
               await loadProfile(recoveredSession.user);
               return;
             }
           } catch (e) {
-            console.error("Session recovery failed:", e);
+            console.error("Session recovery failed:", e?.message || e);
           }
         }
 
         // Only clear state if it's an explicit SIGNED_OUT event
         // Don't clear on TOKEN_REFRESHED failures (user might still be logged in)
         if (event === 'SIGNED_OUT') {
-          console.log("User signed out, clearing state");
+          devLog("User signed out, clearing state");
           setUser(null);
           setProfile(null);
         }
@@ -164,10 +174,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   //
+  // Force a fresh profile fetch (e.g. after an admin approves you, or you
+  // want to double-check status without a full re-login).
+  //
+  const refreshProfile = async () => {
+    if (user) await loadProfile(user, true);
+  };
+
+  //
   // Context value
   //
   const value = useMemo(
-    () => ({ user, profile, loading }),
+    () => ({ user, profile, loading, refreshProfile }),
     [user, profile, loading]
   );
 

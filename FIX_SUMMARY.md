@@ -1,5 +1,11 @@
 # 🔧 GROWINGMINDS MVP FIX - COMPLETE SUMMARY
 
+> **Correction (Aug 2026 rollout audit):** Item 3 below ("App.jsx deleted as
+> dead code") was never actually true - App.jsx still exists, is imported by
+> main.jsx, and defines the app's entire route tree. Do not delete it. Leaving
+> this note in place rather than rewriting history, since the rest of this
+> document's auth-flow fixes are still accurate.
+
 ## ✅ ALL ISSUES IDENTIFIED AND FIXED
 
 ### **CRITICAL PROBLEM: OAuth Code Still Running**
@@ -7,7 +13,7 @@
 The blank page and authentication issues were caused by:
 1. **AuthProvider.jsx** - OAuth callback code in lines 34-51 that ran `exchangeCodeForSession()`
 2. **ResetPassword.jsx** - Wrong redirect URL format for HashRouter
-3. **App.jsx** - Unused dead code file creating confusion
+3. ~~**App.jsx** - Unused dead code file creating confusion~~ (incorrect - see correction above)
 
 ---
 
@@ -41,11 +47,9 @@ The blank page and authentication issues were caused by:
 
 ---
 
-### **3. src/App.jsx** ✅ DELETED
-**Problem:** File existed but was never imported in main.jsx (dead code)
-**Solution:** Removed the file completely
-
-**Why:** main.jsx defines all routes directly - App.jsx was not being used
+### **3. src/App.jsx** ⚠️ CORRECTION - NOT deleted, still in active use
+**Original (incorrect) claim:** File existed but was never imported in main.jsx (dead code), so it was removed.
+**Reality as of Aug 2026:** `main.jsx` does `import App from "./App.jsx"` and renders `<App />` inside the providers. `App.jsx` defines the entire `<Routes>` tree (every page in the app, including all the Gardyn tools). It is load-bearing - do not delete it.
 
 ---
 

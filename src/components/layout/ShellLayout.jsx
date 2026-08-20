@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthProvider";
 import Sidebar from "./Sidebar";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import Notifications from "../Notifications";
+import { getNavItems } from "../../config/navItems";
 
 export default function ShellLayout() {
   const navigate = useNavigate();
@@ -16,16 +17,7 @@ export default function ShellLayout() {
   }
 
   const isAdmin = profile.role === "admin";
-
-  const navItems = [
-    { path: "/feed", label: "Feed", icon: "🏠" },
-    { path: "/library", label: "Library", icon: "📚" },
-    { path: "/qa", label: "Q&A", icon: "❓" },
-  ];
-
-  if (isAdmin) {
-    navItems.push({ path: "/admin", label: "Admin", icon: "🛡️" });
-  }
+  const navItems = getNavItems(isAdmin);
 
   return (
     <div className="w-full min-h-screen bg-gradient-to-b 

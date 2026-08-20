@@ -1,8 +1,38 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
+import path from 'path';
 
-const supabaseUrl = 'https://aaiovfryjlcdijdyknik.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhaW92ZnJ5amxjZGlqZHlrbmlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcxODU5OTQsImV4cCI6MjA1Mjc2MTk5NH0.8d1b-e0edbe09c263e1dc89f9be4f06fb3c8f7c61fd10bd59f3e79a8c67dc';
+// Load VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY from .env ourselves - this
+// is a plain Node script (not run through Vite), so import.meta.env isn't
+// populated here the way it is in the app. No dependency added; this reads
+// the same .env file the app already uses, instead of a second hardcoded
+// copy of the credentials living in this script.
+function loadEnv(envPath = path.resolve('.env')) {
+  const env = {};
+  if (!fs.existsSync(envPath)) return env;
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+const env = { ...loadEnv(), ...process.env };
+const supabaseUrl = env.VITE_SUPABASE_URL;
+const supabaseKey = env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. Check your .env file.');
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

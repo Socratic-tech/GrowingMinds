@@ -50,6 +50,34 @@ export default function Admin() {
   }, [showToast]);
   // Note: loadUsers is called but not in deps to prevent circular dependency
 
+  // Approve every currently pending educator in one action - useful when a
+  // whole staff returns from break and signs up around the same time.
+  const [bulkApproving, setBulkApproving] = useState(false);
+  const approveAll = useCallback(async (pendingIds) => {
+    if (pendingIds.length === 0) return;
+    setBulkApproving(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ is_approved: true })
+      .in("id", pendingIds);
+
+    if (error) {
+      showToast({
+        title: "Error approving educators",
+        description: error.message,
+        type: "error",
+      });
+    } else {
+      loadUsers();
+      showToast({
+        title: `Approved ${pendingIds.length} educator${pendingIds.length === 1 ? "" : "s"}`,
+        type: "success",
+      });
+    }
+    setBulkApproving(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showToast]);
+
   // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS
   useEffect(() => {
     // Only load users if we're an admin
@@ -97,13 +125,28 @@ export default function Admin() {
       {/* PENDING EDUCATORS */}
       {!loading && (
         <section aria-labelledby="pending-title" className="space-y-4">
-          <h2
-            id="pending-title"
-            className="text-xs lg:text-sm uppercase tracking-widest font-bold text-amber-600
-                       flex items-center gap-2"
-          >
-            ⏳ Pending Approval ({pending.length})
-          </h2>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2
+              id="pending-title"
+              className="text-xs lg:text-sm uppercase tracking-widest font-bold text-amber-600
+                         flex items-center gap-2"
+            >
+              ⏳ Pending Approval ({pending.length})
+            </h2>
+
+            {pending.length > 1 && (
+              <Button
+                aria-label={`Approve all ${pending.length} pending educators`}
+                disabled={bulkApproving}
+                className="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4
+                           rounded-xl shadow-md text-xs lg:text-sm uppercase font-bold
+                           disabled:opacity-60"
+                onClick={() => approveAll(pending.map((u) => u.id))}
+              >
+                {bulkApproving ? "Approving…" : `Approve All (${pending.length})`}
+              </Button>
+            )}
+          </div>
 
           {pending.length === 0 && (
             <p className="text-sm lg:text-base text-gray-500 italic pl-1">
