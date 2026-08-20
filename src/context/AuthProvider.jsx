@@ -8,6 +8,20 @@ const AuthContext = createContext();
 const isDev = import.meta.env.DEV;
 const devLog = (...args) => { if (isDev) console.log(...args); };
 
+// One attempt at fetching the profile row, racing a timeout so a hung
+// request can't leave the app stuck on a loading screen forever.
+function fetchProfileOnce(authUser, timeoutMs) {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Profile fetch timeout after ${timeoutMs / 1000}s`)), timeoutMs)
+  );
+  const fetchPromise = supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", authUser.id)
+    .single();
+  return Promise.race([fetchPromise, timeoutPromise]);
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -35,18 +49,26 @@ export function AuthProvider({ children }) {
     // Create and store the loading promise so concurrent calls can await it
     loadProfilePromiseRef.current = (async () => {
       try {
-        // Add 10 second timeout to prevent hanging
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Profile fetch timeout after 10s')), 10000)
-        );
-
-        const fetchPromise = supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", authUser.id)
-          .single();
-
-        const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+        // First attempt: 15s. Supabase's free tier pauses a project after a
+        // period of no API traffic, and the first request after that has to
+        // wake the database back up - which routinely takes longer than the
+        // old flat 10s timeout allowed, incorrectly bouncing a genuinely
+        // approved user to /pending. If the first attempt specifically times
+        // out (not a real query error), give it one more, longer try before
+        // falling back - a cold-start wake-up is usually done well within 20s
+        // more. A real error (bad RLS, bad connection, etc.) will fail the
+        // same way both times and still correctly falls through to fail-closed.
+        let data, error;
+        try {
+          ({ data, error } = await fetchProfileOnce(authUser, 15000));
+        } catch (firstAttemptErr) {
+          if (firstAttemptErr?.message?.includes("timeout")) {
+            devLog("First profile fetch timed out - retrying once (possible cold start)");
+            ({ data, error } = await fetchProfileOnce(authUser, 20000));
+          } else {
+            throw firstAttemptErr;
+          }
+        }
 
         // ALWAYS create a profile object - NEVER null! This prevents unmount loops
         // in ProtectedRoute/ShellLayout. IMPORTANT: this fallback profile is
@@ -199,3 +221,4 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
+// BUILD-TEST-MARKER-12345
