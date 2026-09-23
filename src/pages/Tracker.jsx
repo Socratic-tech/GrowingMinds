@@ -4,17 +4,15 @@ import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
 import { todayLocal, toLocalISODate, parseLocalDate, addDays, daysBetween, formatLocalDate } from "../utils/date";
-import { GARDYN_MODEL, GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, SLOT_COUNT, isValidSlotId } from "../config/gardyn";
+import {
+  GARDYN_MODEL, GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, SLOT_COUNT, isValidSlotId,
+  LIGHT_ZONE_META, getSlotLightZone, getLightMatch, MATCH_COPY, MATCH_TEXT, MATCH_BOX,
+} from "../config/gardyn";
 
 /* ─── Slot layout: see src/config/gardyn.js ─────────────── */
 const COLUMNS = GARDYN_COLUMNS;
 const ROWS    = GARDYN_ROWS;
 const ALL_SLOT_IDS = SLOT_IDS;
-
-const SLOT_LIGHT_ZONE = {
-  A1: "Med Sun",
-  A8: "Low Sun",
-};
 
 const STATUSES = ["Empty", "Germinating", "Growing", "Ready to Harvest", "Monitor"];
 
@@ -232,6 +230,12 @@ export default function Tracker() {
     return acc;
   }, {});
 
+  const lightCounts = ALL_SLOT_IDS.reduce((acc, id) => {
+    const z = getSlotLightZone(id);
+    acc[z] = (acc[z] || 0) + 1;
+    return acc;
+  }, {});
+
   /* ── Plant lookup map ────────────────────────────────────── */
   const plantMap = plants.reduce((m, p) => { m[p.name] = p; return m; }, {});
 
@@ -315,6 +319,22 @@ export default function Tracker() {
             })}
           </div>
 
+          {/* ── Light legend ───────────────────────────────── */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(LIGHT_ZONE_META).map(([zone, meta]) => (
+                <span key={zone} className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${meta.badge}`}>
+                  <span className={`w-2 h-2 rounded-full ${meta.dot}`} aria-hidden="true" />
+                  {meta.label}: {lightCounts[zone] || 0}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Each slot shows how much light it gets (row 1 is the top of the column). When you pick a plant,
+              the tracker checks it against the slot and suggests better open slots.
+            </p>
+          </div>
+
           {/* ── Grid view ──────────────────────────────────── */}
           {viewMode === "grid" && (
             <div className="space-y-4">
@@ -329,7 +349,8 @@ export default function Tracker() {
                       const slot  = slots[id];
                       const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
                       const plant = plantMap[slot?.plant_name];
-                      const slotLightZone = SLOT_LIGHT_ZONE[id];
+                      const zoneMeta = LIGHT_ZONE_META[getSlotLightZone(id)];
+                      const match = plant ? getLightMatch(getSlotLightZone(id), plant.light_zone) : "unknown";
 
                       const harvestEta = plant && slot?.date_planted
                         ? etaDate(slot.date_planted, plant.harvest_days)
@@ -341,11 +362,11 @@ export default function Tracker() {
                           onClick={(e) => openEditor(id, e.currentTarget)}
                           disabled={!slot}
                           aria-haspopup="dialog"
-                          aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""}${slotLightZone ? ` · ${slotLightZone}` : ""}`}
+                          aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""} · ${zoneMeta.label}${plant ? ` · ${MATCH_COPY[match]}` : ""}`}
                           className={`text-left p-3 rounded-2xl border transition-all
                                       hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-teal-700
                                       ${style.bg} ${style.border}
-                                      ${editSlot === id ? "ring-2 ring-teal-400 shadow-md" : ""}`}
+                                      ${editSlot === id ? "ring-2 ring-teal-400 shadow-md" : match === "poor" ? "ring-2 ring-red-300" : ""}`}
                         >
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-[10px] font-bold text-gray-500">{id}</span>
@@ -362,9 +383,14 @@ export default function Tracker() {
                             </p>
                           )}
 
-                          {slotLightZone && (
-                            <p className="text-[10px] text-gray-500 mt-1">
-                              ☀️ {slotLightZone}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded-full border text-[9px] font-bold uppercase tracking-wide ${zoneMeta.badge}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${zoneMeta.dot}`} aria-hidden="true" />
+                            {zoneMeta.short} sun
+                          </span>
+
+                          {plant && match !== "unknown" && (
+                            <p className={`text-[9px] mt-1 font-bold uppercase tracking-wide ${MATCH_TEXT[match]}`}>
+                              {MATCH_COPY[match]}
                             </p>
                           )}
 
@@ -395,7 +421,8 @@ export default function Tracker() {
                 const slot  = slots[id];
                 const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
                 const plant = plantMap[slot?.plant_name];
-                const slotLightZone = SLOT_LIGHT_ZONE[id];
+                const zoneMeta = LIGHT_ZONE_META[getSlotLightZone(id)];
+                const match = plant ? getLightMatch(getSlotLightZone(id), plant.light_zone) : "unknown";
 
                 const harvestEta = plant && slot?.date_planted
                   ? etaDate(slot.date_planted, plant.harvest_days)
@@ -407,13 +434,13 @@ export default function Tracker() {
                     onClick={(e) => openEditor(id, e.currentTarget)}
                     disabled={!slot}
                     aria-haspopup="dialog"
-                    aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""}${slotLightZone ? ` · ${slotLightZone}` : ""}`}
+                    aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""} · ${zoneMeta.label}${plant ? ` · ${MATCH_COPY[match]}` : ""}`}
                     className={`w-full text-left flex items-center gap-3 px-4 py-3
                                 rounded-2xl border transition-all hover:shadow-sm
                                 disabled:opacity-50 disabled:cursor-not-allowed
                                 focus-visible:ring-2 focus-visible:ring-teal-700
                                 ${style.bg} ${style.border}
-                                ${editSlot === id ? "ring-2 ring-teal-400" : ""}`}
+                                ${editSlot === id ? "ring-2 ring-teal-400" : match === "poor" ? "ring-2 ring-red-300" : ""}`}
                   >
                     <span className="text-xs font-bold text-gray-500 w-6 flex-shrink-0">{id}</span>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${style.dot}`} aria-hidden="true" />
@@ -428,9 +455,13 @@ export default function Tracker() {
                       </span>
                     )}
 
-                    {slotLightZone && (
-                      <span className="text-[10px] text-gray-500 hidden sm:inline">
-                        ☀️ {slotLightZone}
+                    <span className={`text-[10px] font-bold uppercase tracking-wide flex-shrink-0 ${zoneMeta.text}`}>
+                      {zoneMeta.short}
+                    </span>
+
+                    {plant && match !== "unknown" && (
+                      <span className={`text-[10px] font-bold uppercase hidden sm:inline ${MATCH_TEXT[match]}`}>
+                        {MATCH_COPY[match]}
                       </span>
                     )}
 
@@ -467,7 +498,7 @@ export default function Tracker() {
               plantMap={plantMap}
               onSave={saveSlot}
               onClose={closeEditor}
-              slotLightZone={SLOT_LIGHT_ZONE[editSlot]}
+              slots={slots}
             />
           )}
         </>
@@ -477,7 +508,7 @@ export default function Tracker() {
 }
 
 /* ─── Slot Edit Panel ────────────────────────────────────── */
-function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLightZone }) {
+function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose }) {
   const [form, setForm] = useState({
     plant_name:        slot.plant_name || "",
     date_planted:      slot.date_planted || "",
@@ -507,6 +538,17 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
   }, []);
 
   const selectedPlant = plantMap[form.plant_name];
+  const slotZone   = getSlotLightZone(slotId);
+  const slotMeta   = LIGHT_ZONE_META[slotZone];
+  const plantMeta  = LIGHT_ZONE_META[selectedPlant?.light_zone];
+  const lightMatch = selectedPlant ? getLightMatch(slotZone, selectedPlant.light_zone) : "unknown";
+  // Other empty slots whose light suits this plant.
+  const betterSlots = selectedPlant && lightMatch !== "best"
+    ? SLOT_IDS.filter((id) =>
+        id !== slotId &&
+        getLightMatch(getSlotLightZone(id), selectedPlant.light_zone) === "best" &&
+        (!slots[id]?.plant_name || slots[id]?.status === "Empty"))
+    : [];
   const germEta       = selectedPlant && form.date_planted
     ? etaDate(form.date_planted, selectedPlant.germination_days)
     : null;
@@ -554,11 +596,10 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
             Edit Slot {slotId}
           </h2>
 
-          {slotLightZone && (
-            <p className="text-xs text-gray-500 mt-0.5">
-              ☀️ {slotLightZone}
-            </p>
-          )}
+          <span className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide ${slotMeta.badge}`}>
+            <span className={`w-2 h-2 rounded-full ${slotMeta.dot}`} aria-hidden="true" />
+            {slotMeta.label}
+          </span>
         </div>
 
         <button
@@ -588,10 +629,32 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
           >
             <option value="">— Empty —</option>
             {plants.map((p) => (
-              <option key={p.name} value={p.name}>{p.name}</option>
+              <option key={p.name} value={p.name}>
+                {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}
+              </option>
             ))}
           </select>
         </div>
+
+        {/* Light match */}
+        {selectedPlant && lightMatch !== "unknown" && (
+          <div className={`border rounded-2xl p-3 space-y-1.5 ${MATCH_BOX[lightMatch]}`} role="status">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-xs font-bold uppercase tracking-wide">{MATCH_COPY[lightMatch]}</p>
+              {plantMeta && <span className="text-[10px] font-semibold">Prefers {plantMeta.label.toLowerCase()}</span>}
+            </div>
+            {lightMatch === "poor" && (
+              <p className="text-xs leading-relaxed">
+                {selectedPlant.name} usually does better in a different light zone. You can still track it here.
+              </p>
+            )}
+            {betterSlots.length > 0 && (
+              <p className="text-xs">
+                <span className="font-semibold">Better open slots:</span> {betterSlots.join(", ")}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Calculated ETAs */}
         {selectedPlant && form.date_planted && (
