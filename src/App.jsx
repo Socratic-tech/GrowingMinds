@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
-import { useAuth } from "./context/AuthProvider";
 
 // Layout
 import ShellLayout from "./components/layout/ShellLayout";
@@ -26,9 +25,6 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PublicOnlyRoute from "./components/auth/PublicOnlyRoute";
 
 export default function App() {
-  const { profile } = useAuth();
-  const isAdmin = profile?.role === "admin";
-
   return (
     <Routes>
       {/* PUBLIC LOGIN PAGE */}
@@ -68,7 +64,10 @@ export default function App() {
         <Route path="qa" element={<QA />} />
         <Route path="profile/:userId" element={<Profile />} />
 
-        {isAdmin && <Route path="admin" element={<Admin />} />}
+        {/* Always registered: Admin guards itself. Registering it only when
+            isAdmin was true meant a refresh on /admin (before the profile
+            loaded) fell through to the "*" route and bounced admins home. */}
+        <Route path="admin" element={<Admin />} />
       </Route>
 
       {/* FALLBACK → HOME */}

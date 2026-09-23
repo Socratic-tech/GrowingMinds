@@ -1,8 +1,21 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabase/client";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
+
+const FORM_KEYS = [
+  "title", "driving_question", "plants_used", "variable", "what_to_measure",
+  "prediction", "observation_checkpoint", "conclusion", "teacher_note",
+];
+
+function formFromItem(item) {
+  return Object.fromEntries(FORM_KEYS.map((k) => [k, item?.[k] || ""]));
+}
+
+function sameForm(a, b) {
+  return FORM_KEYS.every((k) => (a[k] || "") === (b[k] || ""));
+}
 
 const EMPTY_FORM = {
   title:                  "",
@@ -27,12 +40,41 @@ export default function LessonLab() {
   const [editing,  setEditing]  = useState(null);   // id | "new" | null
   const [form,     setForm]     = useState(EMPTY_FORM);
   const [saving,   setSaving]   = useState(false);
+  const [baseline, setBaseline] = useState(EMPTY_FORM); // form values when editing began
+  const formRef = useRef(null);
+
+  const isDirty = editing !== null && !sameForm(form, baseline);
+
+  function confirmDiscard() {
+    return !isDirty || confirm("You have unsaved changes. Discard them?");
+  }
+
+  function openForm(id, values) {
+    setForm(values);
+    setBaseline(values);
+    setEditing(id);
+    setExpanded(null);
+  }
+
+  function closeForm() {
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    setBaseline(EMPTY_FORM);
+  }
+
+  // Scroll the form into view whenever a new edit session starts.
+  useEffect(() => {
+    if (editing !== null) {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [editing, baseline]);
 
   /* ── Load ────────────────────────────────────────────────── */
   const loadItems = useCallback(async () => {
     const { data, error } = await supabase
       .from("investigations")
       .select("*")
+      .or(`is_template.eq.true,user_id.eq.${user.id}`)
       .order("is_template", { ascending: false })
       .order("created_at", { ascending: true });
 
@@ -42,7 +84,7 @@ export default function LessonLab() {
       setItems(data || []);
     }
     setLoading(false);
-  }, [showToast]);
+  }, [showToast, user.id]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
@@ -57,7 +99,7 @@ export default function LessonLab() {
 
     if (editing === "new") {
       const { error } = await supabase.from("investigations").insert({
-        ...form,
+        ...formFromItem(form),
         user_id: user.id,
         is_template: false,
       });
@@ -65,22 +107,26 @@ export default function LessonLab() {
         showToast({ title: "Failed to create investigation", description: error.message, type: "error" });
       } else {
         showToast({ title: "Investigation created!", type: "success" });
-        setEditing(null);
-        setForm(EMPTY_FORM);
+        closeForm();
         loadItems();
       }
     } else {
-      // Update own investigation
-      const { error } = await supabase
+      // Update own investigation only
+      const { data, error } = await supabase
         .from("investigations")
-        .update(form)
-        .eq("id", editing);
-      if (error) {
-        showToast({ title: "Failed to update investigation", description: error.message, type: "error" });
+        .update(formFromItem(form))
+        .eq("id", editing)
+        .eq("user_id", user.id)
+        .select();
+      if (error || !data || data.length === 0) {
+        showToast({
+          title: "Failed to update investigation",
+          description: error?.message || "You can only edit investigations you created.",
+          type: "error",
+        });
       } else {
         showToast({ title: "Investigation updated!", type: "success" });
-        setEditing(null);
-        setForm(EMPTY_FORM);
+        closeForm();
         loadItems();
       }
     }
@@ -90,34 +136,47 @@ export default function LessonLab() {
   /* ── Delete ──────────────────────────────────────────────── */
   async function handleDelete(item) {
     if (!confirm(`Delete "${item.title}"?`)) return;
-    const { error } = await supabase.from("investigations").delete().eq("id", item.id);
-    if (error) {
-      showToast({ title: "Failed to delete", description: error.message, type: "error" });
+    const { data, error } = await supabase
+      .from("investigations")
+      .delete()
+      .eq("id", item.id)
+      .eq("user_id", user.id)
+      .select();
+    if (error || !data || data.length === 0) {
+      showToast({
+        title: "Failed to delete",
+        description: error?.message || "You can only delete investigations you created.",
+        type: "error",
+      });
     } else {
       setItems((prev) => prev.filter((i) => i.id !== item.id));
+      if (editing === item.id) closeForm();
+      showToast({ title: "Investigation deleted", type: "success" });
     }
   }
 
   /* ── Edit existing ───────────────────────────────────────── */
   function startEdit(item) {
-    setForm({
-      title:                  item.title                  || "",
-      driving_question:       item.driving_question       || "",
-      plants_used:            item.plants_used            || "",
-      variable:               item.variable               || "",
-      what_to_measure:        item.what_to_measure        || "",
-      prediction:             item.prediction             || "",
-      observation_checkpoint: item.observation_checkpoint || "",
-      conclusion:             item.conclusion             || "",
-      teacher_note:           item.teacher_note           || "",
-    });
-    setEditing(item.id);
-    setExpanded(null);
+    if (editing === item.id) return;
+    if (!confirmDiscard()) return;
+    openForm(item.id, formFromItem(item));
+  }
+
+  /* ── New (blank) ─────────────────────────────────────────── */
+  function startNew() {
+    if (!confirmDiscard()) return;
+    openForm("new", EMPTY_FORM);
+  }
+
+  /* ── Use a template: prefilled new investigation owned by the user ── */
+  function startFromTemplate(item) {
+    if (!confirmDiscard()) return;
+    openForm("new", { ...formFromItem(item), title: `${item.title} (my version)` });
   }
 
   /* ── Separate templates from custom ─────────────────────── */
   const templates = items.filter((i) => i.is_template);
-  const custom    = items.filter((i) => !i.is_template);
+  const custom    = items.filter((i) => !i.is_template && i.user_id === user.id);
 
   return (
     <div className="space-y-6">
@@ -144,7 +203,7 @@ export default function LessonLab() {
 
         {editing !== "new" && (
           <button
-            onClick={() => { setEditing("new"); setForm(EMPTY_FORM); setExpanded(null); }}
+            onClick={startNew}
             aria-label="Create new investigation"
             className="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-xl
                        text-xs lg:text-sm font-semibold shadow-md min-h-[44px]
@@ -161,14 +220,16 @@ export default function LessonLab() {
         <>
           {/* ── Create / Edit form ─────────────────────────── */}
           {editing !== null && (
-            <InvestigationForm
-              form={form}
-              isNew={editing === "new"}
-              saving={saving}
-              onChange={(k, v) => setForm({ ...form, [k]: v })}
-              onSave={handleSave}
-              onCancel={() => { setEditing(null); setForm(EMPTY_FORM); }}
-            />
+            <div ref={formRef} className="scroll-mt-4">
+              <InvestigationForm
+                form={form}
+                isNew={editing === "new"}
+                saving={saving}
+                onChange={(k, v) => setForm((f) => ({ ...f, [k]: v }))}
+                onSave={handleSave}
+                onCancel={closeForm}
+              />
+            </div>
           )}
 
           {/* ── Starter Templates ──────────────────────────── */}
@@ -184,6 +245,7 @@ export default function LessonLab() {
                   isExpanded={expanded === item.id}
                   onToggle={() => setExpanded(expanded === item.id ? null : item.id)}
                   canEdit={false}
+                  onUseTemplate={() => startFromTemplate(item)}
                 />
               ))}
             </div>
@@ -196,10 +258,13 @@ export default function LessonLab() {
             </h2>
 
             {custom.length === 0 ? (
-              <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                <p className="text-3xl mb-2">🧪</p>
-                <p className="text-sm">No custom investigations yet.</p>
-                <p className="text-xs mt-1">Hit "+ New" to create one for your class.</p>
+              <div className="text-center py-10 px-4 text-gray-500 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <p className="text-3xl mb-2" aria-hidden="true">🧪</p>
+                <p className="text-sm font-semibold text-gray-700">Your class's first investigation is waiting!</p>
+                <p className="text-xs mt-1">
+                  Tap "Use this template" on a starter above to make it your own,
+                  or hit "+ New" to design one from scratch.
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -209,7 +274,7 @@ export default function LessonLab() {
                     item={item}
                     isExpanded={expanded === item.id}
                     onToggle={() => setExpanded(expanded === item.id ? null : item.id)}
-                    canEdit
+                    canEdit={!item.is_template && item.user_id === user.id}
                     onEdit={() => startEdit(item)}
                     onDelete={() => handleDelete(item)}
                   />
@@ -224,7 +289,7 @@ export default function LessonLab() {
 }
 
 /* ─── Investigation Card ─────────────────────────────────── */
-function InvestigationCard({ item, isExpanded, onToggle, canEdit, onEdit, onDelete }) {
+function InvestigationCard({ item, isExpanded, onToggle, canEdit, onEdit, onDelete, onUseTemplate }) {
   return (
     <div
       className={`bg-white border rounded-2xl shadow-sm overflow-hidden
@@ -258,6 +323,17 @@ function InvestigationCard({ item, isExpanded, onToggle, canEdit, onEdit, onDele
                              px-2 py-0.5 rounded-full">
               Template
             </span>
+          )}
+          {item.is_template && onUseTemplate && (
+            <button
+              onClick={onUseTemplate}
+              aria-label={`Use ${item.title} as a template for a new investigation`}
+              className="px-2 py-1 rounded-xl text-[11px] font-semibold text-teal-700
+                         border border-teal-200 hover:bg-teal-50
+                         focus-visible:ring-2 focus-visible:ring-teal-700"
+            >
+              Use this template
+            </button>
           )}
           {canEdit && (
             <>
@@ -306,7 +382,7 @@ function InvestigationCard({ item, isExpanded, onToggle, canEdit, onEdit, onDele
             <div key={row.label} className="flex gap-2 text-sm">
               <span className="text-base flex-shrink-0 mt-0.5" aria-hidden="true">{row.icon}</span>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
                   {row.label}
                 </span>
                 <p className="text-gray-700 text-xs lg:text-sm">{row.value}</p>
@@ -337,7 +413,7 @@ function InvestigationCard({ item, isExpanded, onToggle, canEdit, onEdit, onDele
 function FieldBlock({ label, value }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">{label}</p>
       <p className="text-xs lg:text-sm text-gray-700">{value}</p>
     </div>
   );

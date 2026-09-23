@@ -22,6 +22,30 @@ function fetchProfileOnce(authUser, timeoutMs) {
   return Promise.race([fetchPromise, timeoutPromise]);
 }
 
+// Details typed on the sign-up form (name, school, district, REMC) are
+// stored in auth user_metadata, because with email confirmation on there's
+// no session yet to write the profile row with. Copy any that are missing
+// onto the profile the first time the educator signs in. Only fills blanks;
+// never overwrites something the educator later edited on their profile.
+const SIGNUP_FIELDS = ["full_name", "school", "district", "remc"];
+async function syncSignupDetails(authUser, profileRow, setProfile) {
+  const meta = authUser.user_metadata || {};
+  const update = {};
+  for (const k of SIGNUP_FIELDS) {
+    const v = typeof meta[k] === "string" ? meta[k].trim() : "";
+    if (v && !profileRow[k]) update[k] = v;
+  }
+  if (Object.keys(update).length === 0) return;
+  // If the columns don't exist yet (migration not run), this just errors
+  // quietly and the educator is asked for the details on the Pending page.
+  const { error } = await supabase.from("profiles").update(update).eq("id", authUser.id);
+  if (error) {
+    devLog("Signup detail sync skipped:", error.message);
+    return;
+  }
+  setProfile?.((p) => (p && p.id === authUser.id ? { ...p, ...update } : p));
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -92,6 +116,7 @@ export function AuthProvider({ children }) {
           setUser(authUser);
           setProfile(data || minimalProfile); // Use real data, or fail-closed fallback
           devLog("✅ Profile loaded successfully");
+          if (data) syncSignupDetails(authUser, data, setProfile);
         }
       } catch (e) {
         console.error("Profile fetch exception:", e?.message || e);

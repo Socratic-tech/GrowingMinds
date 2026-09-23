@@ -7,9 +7,22 @@ import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import RichEditor from "../components/ui/RichEditor";
 import { FeedSkeleton } from "../components/ui/Skeleton";
+import { displayName, initials } from "../utils/displayName";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const PAGE_SIZE = 20;
+const COMMENT_LIMIT = 50;
+const ACCEPTED_IMAGE_TYPES = "image/jpeg,image/png,image/webp,image/gif";
+
+function uniqueFileName(userId, ext) {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${userId}-${Date.now()}-${rand}.${ext}`;
+}
+
+function sanitizedExt(name) {
+  const ext = (name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return ["jpg", "jpeg", "png", "webp", "gif"].includes(ext) ? ext : "jpg";
+}
 
 // Compress image to target size
 async function compressImage(file, maxSize = MAX_FILE_SIZE) {
@@ -58,6 +71,10 @@ async function compressImage(file, maxSize = MAX_FILE_SIZE) {
             // If still too large, compress more
             canvas.toBlob(
               (blob2) => {
+                if (!blob2) {
+                  reject(new Error("Failed to compress image"));
+                  return;
+                }
                 resolve(new File([blob2], file.name, { type: "image/jpeg" }));
               },
               "image/jpeg",
@@ -103,16 +120,21 @@ export default function Feed() {
           // Fetch the new post with profile data and prepend it
           const { data } = await supabase
             .from("posts")
-            .select("*, profiles(email)")
+            .select("*, profiles(*)")
             .eq("id", payload.new.id)
             .single();
-          if (data) setPosts((prev) => [data, ...prev]);
+          if (data) addPostLocally(data);
         }
       )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  // Prepend a post unless we already have it (realtime + own insert can race).
+  function addPostLocally(row) {
+    setPosts((prev) => (prev.some((p) => p.id === row.id) ? prev : [row, ...prev]));
+  }
 
   async function fetchPosts(pageNum) {
     const from = pageNum * PAGE_SIZE;
@@ -124,7 +146,7 @@ export default function Feed() {
     try {
       const { data, error } = await supabase
         .from("posts")
-        .select("*, profiles(email)")
+        .select("*, profiles(*)")
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -149,6 +171,7 @@ export default function Feed() {
   }
 
   async function createPost() {
+    if (creating) return;
     if (!content.trim() && !imageFile) {
       showToast({ title: "Write something or add a photo", type: "error" });
       return;
@@ -165,15 +188,25 @@ export default function Feed() {
         // Compress image if over 5MB
         const processedFile = await compressImage(imageFile);
 
-        // Sanitize filename - remove spaces and special characters
-        const fileExt = processedFile.name.split('.').pop() || 'jpg';
-        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        if (!processedFile || processedFile.size > MAX_FILE_SIZE) {
+          showToast({
+            title: "Image is too large",
+            description: "Please choose a photo under 5 MB.",
+            type: "error",
+          });
+          return;
+        }
+
+        // Sanitized, unique filename. Compressed output is always JPEG.
+        const wasCompressed = processedFile !== imageFile;
+        const fileExt = wasCompressed ? "jpg" : sanitizedExt(imageFile.name);
+        const fileName = uniqueFileName(user.id, fileExt);
 
         showToast({ title: "Uploading image...", type: "info" });
 
         const { error: uploadError } = await supabase.storage
           .from("post-images")
-          .upload(fileName, processedFile);
+          .upload(fileName, processedFile, { contentType: processedFile.type || undefined });
 
         if (uploadError) {
           showToast({
@@ -181,7 +214,6 @@ export default function Feed() {
             description: uploadError.message,
             type: "error"
           });
-          setCreating(false);
           return;
         }
 
@@ -189,11 +221,15 @@ export default function Feed() {
         url = pub.data.publicUrl;
       }
 
-      const { error } = await supabase.from("posts").insert({
-        user_id: user.id,
-        content,
-        image_url: url,
-      });
+      const { data: newPost, error } = await supabase
+        .from("posts")
+        .insert({
+          user_id: user.id,
+          content,
+          image_url: url,
+        })
+        .select("*, profiles(*)")
+        .single();
 
       if (error) {
         showToast({ title: "Post failed", description: error.message, type: "error" });
@@ -201,7 +237,7 @@ export default function Feed() {
         showToast({ title: "Posted successfully!", type: "success" });
         setContent("");
         setImageFile(null);
-        fetchPosts(0);
+        if (newPost) addPostLocally(newPost);
       }
     } catch (err) {
       console.error("Create post error:", err);
@@ -217,13 +253,17 @@ export default function Feed() {
 
   const deletePost = useCallback(async (id) => {
     if (!confirm("Delete this post?")) return;
-    const { error } = await supabase.from("posts").delete().eq("id", id);
+    const { data, error } = await supabase.from("posts").delete().eq("id", id).select();
     if (error) {
       showToast({ title: "Failed to delete post", description: error.message, type: "error" });
+    } else if (!data || data.length === 0) {
+      // RLS filtered the delete out silently.
+      showToast({ title: "Couldn't delete — you may not have permission", type: "error" });
     } else {
-      fetchPosts(0);
+      setPosts((prev) => prev.filter((p) => p.id !== id));
+      showToast({ title: "Post deleted", type: "success" });
     }
-  }, []);
+  }, [showToast]);
 
   return (
     <div className="space-y-10">
@@ -237,7 +277,7 @@ export default function Feed() {
           Update the Garden 🌱
         </h2>
 
-        <RichEditor value={content} onChange={setContent} />
+        <RichEditor value={content} onChange={setContent} ariaLabel="Post content" />
 
         {/* IMAGE UPLOAD */}
         <div className="space-y-1">
@@ -257,9 +297,21 @@ export default function Feed() {
           <input
             id="post-image-upload"
             type="file"
-            accept="image/*"
+            accept={ACCEPTED_IMAGE_TYPES}
             className="hidden"
-            onChange={(e) => setImageFile(e.target.files[0])}
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              e.target.value = ""; // allow re-selecting the same file
+              if (f && !ACCEPTED_IMAGE_TYPES.split(",").includes(f.type)) {
+                showToast({
+                  title: "Unsupported image type",
+                  description: "Please choose a JPEG, PNG, WebP, or GIF.",
+                  type: "error",
+                });
+                return;
+              }
+              setImageFile(f);
+            }}
           />
 
           {imageFile && (
@@ -283,6 +335,14 @@ export default function Feed() {
         <FeedSkeleton />
       ) : (
         <div className="space-y-10 pb-24">
+          {posts.length === 0 && (
+            <div className="bg-white rounded-3xl lg:rounded-2xl p-8 shadow border border-gray-200
+                            text-center text-gray-500 text-sm lg:text-base">
+              <p className="text-3xl mb-2" aria-hidden="true">🌱</p>
+              No posts yet — share what's growing in your classroom!
+            </div>
+          )}
+
           {posts.map((post) => (
             <PostCard
               key={post.id}
@@ -324,25 +384,27 @@ export default function Feed() {
 -------------------- */
 const PostCard = memo(function PostCard({ post, user, isAdmin, onDelete }) {
   const navigate = useNavigate();
+  const author = displayName(post.profiles);
+  const canDelete = isAdmin || post.user_id === user?.id;
 
   return (
     <div
       className="bg-white rounded-3xl lg:rounded-2xl p-6 shadow-lg
                  border border-gray-200 space-y-5"
       role="region"
-      aria-label={`Post by ${post.profiles?.email}`}
+      aria-label={`Post by ${author}`}
     >
       <div className="flex items-start gap-3">
 
         {/* Avatar */}
         <button
-          aria-label={`View profile of ${post.profiles?.email?.split("@")[0]}`}
+          aria-label={`View profile of ${author}`}
           onClick={() => navigate(`/profile/${post.user_id}`)}
           className="w-10 h-10 rounded-full bg-teal-700 text-white flex items-center
                      justify-center font-bold text-sm flex-shrink-0 hover:opacity-80
                      transition-opacity focus-visible:ring-2 focus-visible:ring-teal-500"
         >
-          {post.profiles?.email?.charAt(0).toUpperCase()}
+          {initials(post.profiles)}
         </button>
 
         {/* Author + Date */}
@@ -352,15 +414,15 @@ const PostCard = memo(function PostCard({ post, user, isAdmin, onDelete }) {
             className="font-semibold text-teal-800 text-sm lg:text-base text-left
                        hover:underline focus-visible:underline"
           >
-            {post.profiles?.email?.split("@")[0]}
+            {author}
           </button>
           <p className="text-[10px] lg:text-xs text-gray-500">
             {new Date(post.created_at).toLocaleDateString()}
           </p>
         </div>
 
-        {/* ADMIN DELETE */}
-        {isAdmin && (
+        {/* DELETE (owner or admin) */}
+        {canDelete && (
           <button
             aria-label="Delete post"
             onClick={(e) => {
@@ -406,49 +468,67 @@ function CommentSection({ postId, user, isAdmin }) {
   const navigate = useNavigate();
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
-
-  async function loadComments() {
-    const { data, error } = await supabase
-      .from("comments")
-      .select("*, profiles(email)")
-      .eq("post_id", postId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      showToast({ title: "Failed to load comments", type: "error" });
-    } else {
-      setComments(data || []);
-    }
-  }
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    loadComments();
-  }, []);
+    let cancelled = false;
+    (async () => {
+      // Bounded: newest COMMENT_LIMIT comments, displayed oldest-first.
+      const { data, error } = await supabase
+        .from("comments")
+        .select("*, profiles(*)")
+        .eq("post_id", postId)
+        .order("created_at", { ascending: false })
+        .limit(COMMENT_LIMIT);
+
+      if (cancelled) return;
+      if (error) {
+        showToast({ title: "Failed to load comments", type: "error" });
+      } else {
+        setComments((data || []).reverse());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [postId]);
 
   async function submitComment(e) {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (submitting || !text.trim()) return;
 
-    const { error } = await supabase.from("comments").insert({
-      post_id: postId,
-      user_id: user.id,
-      content: text,
-    });
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from("comments")
+        .insert({
+          post_id: postId,
+          user_id: user.id,
+          content: text,
+        })
+        .select("*, profiles(*)")
+        .single();
 
-    if (error) {
-      showToast({ title: "Failed to post comment", description: error.message, type: "error" });
-    } else {
-      setText("");
-      loadComments();
+      if (error) {
+        showToast({ title: "Failed to post comment", description: error.message, type: "error" });
+      } else {
+        setText("");
+        if (data) {
+          setComments((prev) => (prev.some((c) => c.id === data.id) ? prev : [...prev, data]));
+        }
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
   async function deleteComment(id) {
-    const { error } = await supabase.from("comments").delete().eq("id", id);
+    if (!confirm("Delete this comment?")) return;
+    const { data, error } = await supabase.from("comments").delete().eq("id", id).select();
     if (error) {
-      showToast({ title: "Failed to delete comment", type: "error" });
+      showToast({ title: "Failed to delete comment", description: error.message, type: "error" });
+    } else if (!data || data.length === 0) {
+      showToast({ title: "Couldn't delete — you may not have permission", type: "error" });
     } else {
-      loadComments();
+      setComments((prev) => prev.filter((c) => c.id !== id));
     }
   }
 
@@ -464,19 +544,19 @@ function CommentSection({ postId, user, isAdmin }) {
             shadow-sm relative
           "
           role="group"
-          aria-label={`Comment by ${c.profiles?.email}`}
+          aria-label={`Comment by ${displayName(c.profiles)}`}
         >
           <button
             onClick={() => navigate(`/profile/${c.user_id}`)}
             className="text-xs lg:text-sm font-semibold text-teal-800 hover:underline
                        text-left focus-visible:underline"
           >
-            {c.profiles?.email?.split("@")[0]}
+            {displayName(c.profiles)}
           </button>
 
           <p className="text-sm lg:text-base text-gray-700">{c.content}</p>
 
-          {isAdmin && (
+          {(isAdmin || c.user_id === user?.id) && (
             <button
               aria-label="Delete comment"
               onClick={() => deleteComment(c.id)}
@@ -509,7 +589,9 @@ function CommentSection({ postId, user, isAdmin }) {
         />
 
         <Button
+          type="submit"
           aria-label="Submit comment"
+          disabled={submitting || !text.trim()}
           className="bg-teal-700 hover:bg-teal-800 text-white rounded-xl px-4 
                      w-12 h-12 flex items-center justify-center text-lg"
         >

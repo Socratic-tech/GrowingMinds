@@ -5,6 +5,37 @@ import { useAuth } from "../context/AuthProvider";
 import { useToast } from "../components/ui/toast";
 import { LibrarySkeleton } from "../components/ui/Skeleton";
 
+/**
+ * Normalize a user-entered resource URL. Adds https:// when no scheme is
+ * given; returns null for anything that isn't a valid http(s) URL
+ * (javascript:, data:, mailto:, garbage...).
+ */
+function normalizeUrl(raw) {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return null;
+  // Has an explicit scheme like "javascript:" / "http:" (but not "host:port")?
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !/^[^/:]+:\d+(\/|$)/.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed.replace(/^\/+/, "")}`;
+  try {
+    const u = new URL(candidate);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (!u.hostname) return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+/** Only allow http(s) hrefs when rendering stored resources. */
+function safeHref(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Library() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
@@ -16,13 +47,15 @@ export default function Library() {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [category, setCategory] = useState("Guide");
+  const [submitting, setSubmitting] = useState(false);
 
   async function loadResources() {
     try {
       const { data, error } = await supabase
         .from("resources")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(500);
 
       if (error) {
         showToast({ title: "Failed to load resources", description: error.message, type: "error" });
@@ -48,31 +81,52 @@ export default function Library() {
       return;
     }
 
-    if (!title.trim() || !url.trim()) return;
+    if (submitting || !title.trim() || !url.trim()) return;
 
-    const { error } = await supabase
-      .from("resources")
-      .insert({ title, url, category });
+    const normalized = normalizeUrl(url);
+    if (!normalized) {
+      showToast({
+        title: "Invalid link",
+        description: "Enter a web address starting with http:// or https://",
+        type: "error",
+      });
+      return;
+    }
 
-    if (error) {
-      showToast({ title: "Failed to add resource", type: "error" });
-    } else {
-      setTitle("");
-      setUrl("");
-      setCategory("Guide");
-      setShowAdd(false);
-      loadResources();
-      showToast({ title: "Resource added", type: "success" });
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from("resources")
+        .insert({ title: title.trim(), url: normalized, category })
+        .select()
+        .single();
+
+      if (error) {
+        showToast({ title: "Failed to add resource", description: error.message, type: "error" });
+      } else {
+        setTitle("");
+        setUrl("");
+        setCategory("Guide");
+        setShowAdd(false);
+        if (data) {
+          setResources((prev) => (prev.some((r) => r.id === data.id) ? prev : [data, ...prev]));
+        }
+        showToast({ title: "Resource added", type: "success" });
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
   async function deleteResource(id) {
     if (!confirm("Delete this resource?")) return;
-    const { error } = await supabase.from("resources").delete().eq("id", id);
+    const { data, error } = await supabase.from("resources").delete().eq("id", id).select();
     if (error) {
       showToast({ title: "Failed to delete resource", description: error.message, type: "error" });
+    } else if (!data || data.length === 0) {
+      showToast({ title: "Couldn't delete — you may not have permission", type: "error" });
     } else {
-      loadResources();
+      setResources((prev) => prev.filter((r) => r.id !== id));
     }
   }
 
@@ -140,7 +194,10 @@ export default function Library() {
           <input
             id="resource-url"
             type="text"
-            placeholder="URL"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            placeholder="https://example.org/guide"
             className="w-full p-3 lg:p-4 border border-gray-300 rounded-xl lg:rounded-lg 
                        shadow-inner text-sm lg:text-base focus-visible:ring-2 
                        focus-visible:ring-teal-700"
@@ -165,11 +222,13 @@ export default function Library() {
           </select>
 
           <Button
+            type="submit"
             aria-label="Submit new resource"
+            disabled={submitting}
             className="w-full bg-teal-700 hover:bg-teal-800 text-white 
                        py-3 lg:py-4 rounded-xl shadow-lg text-xs lg:text-base"
           >
-            Add Resource
+            {submitting ? "Adding…" : "Add Resource"}
           </Button>
         </form>
       )}
@@ -180,23 +239,20 @@ export default function Library() {
       ) : null}
 
       <div className="space-y-4 pb-24">
-        {!loading && resources.map((r) => (
-          <div
-            key={r.id}
-            className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-gray-200 
-                       shadow-md flex justify-between items-center"
-            role="group"
-            aria-label={`Resource titled ${r.title}`}
-          >
-            {/* Resource Link */}
-            <a
-              href={r.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`Open resource: ${r.title}`}
-              className="flex items-center gap-4 flex-1 hover:underline 
-                         focus-visible:ring-2 focus-visible:ring-teal-700 rounded-lg"
-            >
+        {!loading && resources.length === 0 && (
+          <div className="bg-white p-8 rounded-3xl lg:rounded-2xl border border-gray-200
+                          shadow-md text-center text-gray-500 text-sm lg:text-base">
+            <p className="text-3xl mb-2" aria-hidden="true">📚</p>
+            {isAdmin
+              ? "The library is empty — use Add to share the first resource."
+              : "No resources yet. Your program admins will add guides, curriculum, and videos here soon."}
+          </div>
+        )}
+
+        {!loading && resources.map((r) => {
+          const href = safeHref(r.url);
+          const inner = (
+            <>
               <div
                 aria-hidden="true"
                 className="w-10 h-10 bg-teal-100 text-teal-700 rounded-xl 
@@ -214,7 +270,36 @@ export default function Library() {
                   {r.category}
                 </span>
               </div>
-            </a>
+            </>
+          );
+          return (
+          <div
+            key={r.id}
+            className="bg-white p-5 rounded-3xl lg:rounded-2xl border border-gray-200 
+                       shadow-md flex justify-between items-center"
+            role="group"
+            aria-label={`Resource titled ${r.title}`}
+          >
+            {/* Resource Link (only http/https URLs are rendered as links) */}
+            {href ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open resource: ${r.title}`}
+                className="flex items-center gap-4 flex-1 hover:underline 
+                           focus-visible:ring-2 focus-visible:ring-teal-700 rounded-lg"
+              >
+                {inner}
+              </a>
+            ) : (
+              <div
+                className="flex items-center gap-4 flex-1 opacity-60"
+                title="This link is invalid"
+              >
+                {inner}
+              </div>
+            )}
 
             {/* DELETE BUTTON */}
             {isAdmin && (
@@ -231,7 +316,8 @@ export default function Library() {
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

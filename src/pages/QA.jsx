@@ -5,6 +5,11 @@ import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { QASkeleton } from "../components/ui/Skeleton";
+import { displayName } from "../utils/displayName";
+
+const PAGE_SIZE = 30;
+
+const NO_PERMISSION = "Couldn't delete — you may not have permission";
 
 export default function QA() {
   const { user, profile } = useAuth();
@@ -15,48 +20,79 @@ export default function QA() {
   const [loading, setLoading] = useState(true);
   const [showAsk, setShowAsk] = useState(false);
   const [title, setTitle] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  /* Load questions */
-  async function loadQuestions() {
+  function addQuestionLocally(row) {
+    setQuestions((prev) => (prev.some((q) => q.id === row.id) ? prev : [row, ...prev]));
+  }
+
+  /* Load questions (paged) */
+  async function loadQuestions(pageNum = 0) {
+    const from = pageNum * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    if (pageNum === 0) setLoading(true);
+    else setLoadingMore(true);
+
     try {
       const { data, error } = await supabase
         .from("questions")
-        .select("*, profiles(email)")
-        .order("created_at", { ascending: false });
+        .select("*, profiles(*)")
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (error) {
         showToast({ title: "Failed to load questions", description: error.message, type: "error" });
       } else {
-        setQuestions(data || []);
+        const rows = data || [];
+        setQuestions((prev) => {
+          if (pageNum === 0) return rows;
+          const seen = new Set(prev.map((q) => q.id));
+          return [...prev, ...rows.filter((q) => !seen.has(q.id))];
+        });
+        setPage(pageNum + 1);
+        setHasMore(rows.length === PAGE_SIZE);
       }
     } catch (err) {
       showToast({ title: "Error loading questions", description: err.message, type: "error" });
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
   /* Ask question */
   async function askQuestion(e) {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (submitting || !title.trim()) return;
 
-    const { error } = await supabase.from("questions").insert({
-      user_id: user.id,
-      title,
-    });
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from("questions")
+        .insert({
+          user_id: user.id,
+          title,
+        })
+        .select("*, profiles(*)")
+        .single();
 
-    if (error) {
-      showToast({ title: "Could not post question", type: "error" });
-    } else {
-      setTitle("");
-      setShowAsk(false);
-      loadQuestions();
+      if (error) {
+        showToast({ title: "Could not post question", description: error.message, type: "error" });
+      } else {
+        setTitle("");
+        setShowAsk(false);
+        if (data) addQuestionLocally(data);
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
   useEffect(() => {
-    loadQuestions();
+    loadQuestions(0);
 
     // Subscribe to new questions for live updates
     const channel = supabase
@@ -71,10 +107,10 @@ export default function QA() {
         async (payload) => {
           const { data } = await supabase
             .from("questions")
-            .select("*, profiles(email)")
+            .select("*, profiles(*)")
             .eq("id", payload.new.id)
             .single();
-          if (data) setQuestions((prev) => [data, ...prev]);
+          if (data) addQuestionLocally(data);
         }
       )
       .subscribe();
@@ -133,11 +169,13 @@ export default function QA() {
           />
 
           <Button
+            type="submit"
             aria-label="Submit question"
+            disabled={submitting || !title.trim()}
             className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 lg:py-4 
                        rounded-xl shadow-lg text-xs lg:text-base"
           >
-            Submit Question
+            {submitting ? "Submitting…" : "Submit Question"}
           </Button>
         </form>
       )}
@@ -147,6 +185,14 @@ export default function QA() {
         <QASkeleton />
       ) : (
       <div className="space-y-4 pb-24">
+        {questions.length === 0 && (
+          <div className="bg-white p-8 rounded-3xl lg:rounded-2xl border border-gray-200
+                          shadow-md text-center text-gray-500 text-sm lg:text-base">
+            <p className="text-3xl mb-2" aria-hidden="true">💬</p>
+            No questions yet — ask the first one!
+          </div>
+        )}
+
         {questions.map((q) => (
           <QuestionCard
             key={q.id}
@@ -158,6 +204,20 @@ export default function QA() {
             }
           />
         ))}
+
+        {hasMore && questions.length > 0 && (
+          <div className="flex justify-center pt-2">
+            <Button
+              onClick={() => loadQuestions(page)}
+              disabled={loadingMore}
+              className="bg-white border border-teal-700 text-teal-700 hover:bg-teal-50
+                         px-8 py-3 rounded-xl shadow font-semibold text-sm lg:text-base
+                         disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : "Load more questions"}
+            </Button>
+          </div>
+        )}
       </div>
       )}
     </div>
@@ -172,12 +232,19 @@ function QuestionCard({ question, user, isAdmin, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const [answers, setAnswers] = useState([]);
   const [newAnswer, setNewAnswer] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const { showToast } = useToast();
+  const author = displayName(question.profiles);
+  const canDeleteQuestion = isAdmin || question.user_id === user?.id;
+
+  function addAnswerLocally(row) {
+    setAnswers((prev) => (prev.some((a) => a.id === row.id) ? prev : [...prev, row]));
+  }
 
   async function loadAnswers() {
     const { data, error } = await supabase
       .from("answers")
-      .select("*, profiles(email)")
+      .select("*, profiles(*)")
       .eq("question_id", question.id)
       .order("created_at", { ascending: true });
 
@@ -191,45 +258,60 @@ function QuestionCard({ question, user, isAdmin, onDelete }) {
   async function deleteQuestion() {
     if (!confirm("Delete this question?")) return;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("questions")
       .delete()
-      .eq("id", question.id);
+      .eq("id", question.id)
+      .select();
 
-    if (!error) {
+    if (error) {
+      showToast({ title: "Error deleting question", description: error.message, type: "error" });
+    } else if (!data || data.length === 0) {
+      showToast({ title: NO_PERMISSION, type: "error" });
+    } else {
       onDelete();
       showToast({ title: "Question deleted", type: "success" });
-    } else {
-      showToast({ title: "Error deleting question", type: "error" });
     }
   }
 
   async function deleteAnswer(id) {
-    const { error } = await supabase.from("answers").delete().eq("id", id);
+    if (!confirm("Delete this answer?")) return;
+    const { data, error } = await supabase.from("answers").delete().eq("id", id).select();
     if (error) {
       showToast({ title: "Failed to delete answer", description: error.message, type: "error" });
+    } else if (!data || data.length === 0) {
+      showToast({ title: NO_PERMISSION, type: "error" });
     } else {
-      loadAnswers();
+      setAnswers((prev) => prev.filter((a) => a.id !== id));
     }
   }
 
   async function submitAnswer(e) {
     e.preventDefault();
-    if (!newAnswer.trim()) return;
+    if (submitting || !newAnswer.trim()) return;
 
-    const { error } = await supabase.from("answers").insert({
-      question_id: question.id,
-      user_id: user.id,
-      content: newAnswer,
-    });
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase
+        .from("answers")
+        .insert({
+          question_id: question.id,
+          user_id: user.id,
+          content: newAnswer,
+        })
+        .select("*, profiles(*)")
+        .single();
 
-    if (error) {
-      showToast({ title: "Failed to post answer", description: error.message, type: "error" });
-      return;
+      if (error) {
+        showToast({ title: "Failed to post answer", description: error.message, type: "error" });
+        return;
+      }
+
+      setNewAnswer("");
+      if (data) addAnswerLocally(data);
+    } finally {
+      setSubmitting(false);
     }
-
-    setNewAnswer("");
-    loadAnswers();
   }
 
   // Subscribe to new answers when question is expanded
@@ -249,10 +331,10 @@ function QuestionCard({ question, user, isAdmin, onDelete }) {
         async (payload) => {
           const { data } = await supabase
             .from("answers")
-            .select("*, profiles(email)")
+            .select("*, profiles(*)")
             .eq("id", payload.new.id)
             .single();
-          if (data) setAnswers((prev) => [...prev, data]);
+          if (data) addAnswerLocally(data);
         }
       )
       .subscribe();
@@ -286,8 +368,8 @@ function QuestionCard({ question, user, isAdmin, onDelete }) {
           </h2>
         </div>
 
-        {/* ADMIN DELETE */}
-        {isAdmin && (
+        {/* DELETE (owner or admin) */}
+        {canDeleteQuestion && (
           <button
             aria-label="Delete question"
             onClick={(e) => {
@@ -330,7 +412,7 @@ function QuestionCard({ question, user, isAdmin, onDelete }) {
           onClick={() => navigate(`/profile/${question.user_id}`)}
           className="hover:underline focus-visible:underline text-left"
         >
-          {question.profiles?.email?.split("@")[0]}
+          {author}
         </button>
       </div>
 
@@ -354,15 +436,15 @@ function QuestionCard({ question, user, isAdmin, onDelete }) {
               className="bg-white p-3 rounded-3xl lg:rounded-2xl 
                          border border-gray-200 shadow-sm relative"
               role="group"
-              aria-label={`Answer by ${a.profiles?.email}`}
+              aria-label={`Answer by ${displayName(a.profiles)}`}
             >
               <p className="text-sm lg:text-base text-gray-700">{a.content}</p>
 
               <p className="text-[10px] lg:text-xs text-teal-700 font-bold uppercase mt-1">
-                — {a.profiles?.email?.split("@")[0]}
+                — {displayName(a.profiles)}
               </p>
 
-              {isAdmin && (
+              {(isAdmin || a.user_id === user?.id) && (
                 <button
                   aria-label="Delete answer"
                   onClick={(e) => {
@@ -396,7 +478,9 @@ function QuestionCard({ question, user, isAdmin, onDelete }) {
             />
 
             <Button
+              type="submit"
               aria-label="Submit answer"
+              disabled={submitting || !newAnswer.trim()}
               className="bg-teal-700 hover:bg-teal-800 text-white rounded-xl px-4 
                          w-12 h-12 flex items-center justify-center text-lg"
             >

@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabase/client";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
+import { todayLocal, toLocalISODate, parseLocalDate, addDays, daysBetween, formatLocalDate } from "../utils/date";
 
 /* ─── Slot layout: 3 columns × 10 rows (A–C, 1–10) ─────── */
 const COLUMNS = ["A", "B", "C"];
@@ -17,30 +18,94 @@ const SLOT_LIGHT_ZONE = {
 const STATUSES = ["Empty", "Germinating", "Growing", "Ready to Harvest", "Monitor"];
 
 const STATUS_STYLE = {
-  "Empty":             { bg: "bg-gray-100",    text: "text-gray-400",   border: "border-gray-200",   dot: "bg-gray-400"   },
+  "Empty":             { bg: "bg-gray-100",    text: "text-gray-500",   border: "border-gray-200",   dot: "bg-gray-400"   },
   "Germinating":       { bg: "bg-blue-50",     text: "text-blue-700",   border: "border-blue-200",   dot: "bg-blue-400"   },
   "Growing":           { bg: "bg-teal-50",     text: "text-teal-700",   border: "border-teal-200",   dot: "bg-teal-500"   },
   "Ready to Harvest":  { bg: "bg-green-50",    text: "text-green-700",  border: "border-green-300",  dot: "bg-green-500"  },
   "Monitor":           { bg: "bg-amber-50",    text: "text-amber-700",  border: "border-amber-200",  dot: "bg-amber-400"  },
 };
 
-/* ─── Date helpers ───────────────────────────────────────── */
-function addDays(dateStr, days) {
+/* ─── Date helpers (local calendar dates) ───────────────── */
+function etaDate(dateStr, days) {
   if (!dateStr || days == null) return null;
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  const d = parseLocalDate(dateStr);
+  return d ? toLocalISODate(addDays(d, days)) : null;
 }
 
 function formatDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatLocalDate(iso);
 }
 
 function daysAgo(iso) {
-  if (!iso) return null;
-  const diff = Math.floor((Date.now() - new Date(iso)) / 86400000);
-  return diff;
+  const d = parseLocalDate(iso);
+  return d ? daysBetween(d, new Date()) : null;
+}
+
+/* ─── First-visit seeding ────────────────────────────────── */
+// Module-level in-flight guard so StrictMode double effects / quick remounts
+// share a single seed request per user.
+const seedInFlight = new Map();
+
+async function seedMissingSlots(userId, missingIds) {
+  const rows = missingIds.map((id) => ({ user_id: userId, slot_id: id, status: "Empty" }));
+  if (rows.length === 0) return null;
+
+  const { error } = await supabase
+    .from("tracker_slots")
+    .upsert(rows, { onConflict: "user_id,slot_id", ignoreDuplicates: true });
+  if (!error) return null;
+  if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+
+  // Unique constraint not migrated yet: re-select, then insert only what's still missing.
+  const { data: current, error: selErr } = await supabase
+    .from("tracker_slots")
+    .select("slot_id")
+    .eq("user_id", userId);
+  if (selErr) return selErr;
+  const have = new Set((current || []).map((r) => r.slot_id));
+  const stillMissing = rows.filter((r) => !have.has(r.slot_id));
+  if (stillMissing.length === 0) return null;
+  const { error: insErr } = await supabase.from("tracker_slots").insert(stillMissing);
+  return insErr || null;
+}
+
+function seedOnce(userId, missingIds) {
+  if (!seedInFlight.has(userId)) {
+    const p = seedMissingSlots(userId, missingIds).finally(() => seedInFlight.delete(userId));
+    seedInFlight.set(userId, p);
+  }
+  return seedInFlight.get(userId);
+}
+
+function hasMissingSlots(bySlot) {
+  return ALL_SLOT_IDS.some((id) => !bySlot[id]);
+}
+
+function rowTime(r) {
+  return Date.parse(r.updated_at || r.created_at || "") || 0;
+}
+
+// How much a teacher has filled in on a row - so a duplicate empty seed row
+// never hides the real one. Matches the dedupe order in the Sept 2026 SQL.
+function rowRichness(r) {
+  return (r.plant_name ? 4 : 0) + (r.date_planted ? 2 : 0) + (r.observation_notes ? 1 : 0);
+}
+
+/** One row per slot_id: the most filled-in row wins, then the newest. */
+function dedupeSlots(rows) {
+  const bySlot = {};
+  for (const r of rows) {
+    const prev = bySlot[r.slot_id];
+    if (
+      !prev ||
+      rowRichness(r) > rowRichness(prev) ||
+      (rowRichness(r) === rowRichness(prev) && rowTime(r) >= rowTime(prev))
+    ) {
+      bySlot[r.slot_id] = r;
+    }
+  }
+  return bySlot;
 }
 
 /* ─── Main component ─────────────────────────────────────── */
@@ -54,12 +119,19 @@ export default function Tracker() {
   const [editSlot,   setEditSlot]   = useState(null);
   const [viewMode,   setViewMode]   = useState("grid");
 
+  const [loadError,  setLoadError]  = useState(null);
+  const lastTriggerRef = useRef(null);
+
   /* ── Load plants + slots ─────────────────────────────────── */
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isCancelled = () => false) => {
+    setLoadError(null);
+    const selectSlots = () => supabase.from("tracker_slots").select("*").eq("user_id", user.id);
+
     const [plantRes, slotRes] = await Promise.all([
       supabase.from("plants").select("name, germination_days, harvest_days, category, light_zone").order("name"),
-      supabase.from("tracker_slots").select("*").eq("user_id", user.id),
+      selectSlots(),
     ]);
+    if (isCancelled()) return;
 
     if (plantRes.error) {
       showToast({ title: "Failed to load plant catalog", type: "error" });
@@ -69,33 +141,65 @@ export default function Tracker() {
 
     if (slotRes.error) {
       showToast({ title: "Failed to load tracker", description: slotRes.error.message, type: "error" });
+      setLoadError(slotRes.error.message);
       setLoading(false);
       return;
     }
 
-    const existing = {};
-    (slotRes.data || []).forEach((s) => { existing[s.slot_id] = s; });
+    let rows = slotRes.data || [];
+    const have = new Set(rows.map((s) => s.slot_id));
+    const missingIds = ALL_SLOT_IDS.filter((id) => !have.has(id));
 
-    const toInsert = ALL_SLOT_IDS
-      .filter((id) => !existing[id])
-      .map((id) => ({ user_id: user.id, slot_id: id, status: "Empty" }));
-
-    if (toInsert.length > 0) {
-      const { data: seeded, error: seedErr } = await supabase
-        .from("tracker_slots")
-        .insert(toInsert)
-        .select();
-
-      if (!seedErr && seeded) {
-        seeded.forEach((s) => { existing[s.slot_id] = s; });
+    if (missingIds.length > 0) {
+      const seedErr = await seedOnce(user.id, missingIds);
+      if (isCancelled()) return;
+      if (seedErr) {
+        showToast({ title: "Couldn't set up your slots", description: seedErr.message, type: "error" });
+        setLoadError(seedErr.message);
+      }
+      // Always re-read from the DB so we show exactly what's stored.
+      const again = await selectSlots();
+      if (isCancelled()) return;
+      if (again.error) {
+        showToast({ title: "Failed to load tracker", description: again.error.message, type: "error" });
+        setLoadError(again.error.message);
+      } else {
+        rows = again.data || [];
       }
     }
 
-    setSlots(existing);
+    const bySlot = dedupeSlots(rows);
+    if (!hasMissingSlots(bySlot)) {
+      setLoadError(null);
+    } else {
+      // Seed "succeeded" but rows are still missing (e.g. blocked by RLS) - don't fail silently.
+      setLoadError((prev) => prev || "Some slots are missing from your tracker.");
+    }
+    setSlots(bySlot);
     setLoading(false);
   }, [user.id, showToast]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    let cancelled = false;
+    loadData(() => cancelled);
+    return () => { cancelled = true; };
+  }, [loadData]);
+
+  function retryLoad() {
+    setLoading(true);
+    loadData();
+  }
+
+  function openEditor(id, trigger) {
+    lastTriggerRef.current = trigger;
+    setEditSlot(id);
+  }
+
+  function closeEditor() {
+    setEditSlot(null);
+    const el = lastTriggerRef.current;
+    requestAnimationFrame(() => el?.focus?.());
+  }
 
   /* ── Save slot edits ─────────────────────────────────────── */
   async function saveSlot(slotId, updates) {
@@ -114,7 +218,7 @@ export default function Tracker() {
     } else {
       setSlots((prev) => ({ ...prev, [slotId]: data }));
       showToast({ title: `Slot ${slotId} updated`, type: "success" });
-      setEditSlot(null);
+      closeEditor();
     }
   }
 
@@ -175,6 +279,22 @@ export default function Tracker() {
         <TrackerSkeleton />
       ) : (
         <>
+          {loadError && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3" role="alert">
+              <div>
+                <p className="font-semibold text-red-800 text-sm">Some slots couldn't be loaded or set up.</p>
+                <p className="text-xs text-red-700 mt-0.5">{loadError}</p>
+              </div>
+              <button
+                onClick={retryLoad}
+                className="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-xl text-sm
+                           font-semibold min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* ── Status summary ─────────────────────────────── */}
           <div className="flex flex-wrap gap-2">
             {STATUSES.map((s) => {
@@ -197,7 +317,7 @@ export default function Tracker() {
             <div className="space-y-4">
               {COLUMNS.map((col) => (
                 <div key={col}>
-                  <h2 className="text-xs uppercase tracking-widest font-bold text-gray-400 mb-2">
+                  <h2 className="text-xs uppercase tracking-widest font-bold text-gray-500 mb-2">
                     Column {col}
                   </h2>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
@@ -209,28 +329,35 @@ export default function Tracker() {
                       const slotLightZone = SLOT_LIGHT_ZONE[id];
 
                       const harvestEta = plant && slot?.date_planted
-                        ? addDays(slot.date_planted, plant.harvest_days)
+                        ? etaDate(slot.date_planted, plant.harvest_days)
                         : null;
 
                       return (
                         <button
                           key={id}
-                          onClick={() => setEditSlot(editSlot === id ? null : id)}
-                          aria-expanded={editSlot === id}
+                          onClick={(e) => openEditor(id, e.currentTarget)}
+                          disabled={!slot}
+                          aria-haspopup="dialog"
                           aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""}${slotLightZone ? ` · ${slotLightZone}` : ""}`}
                           className={`text-left p-3 rounded-2xl border transition-all
-                                      hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-700
+                                      hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-teal-700
                                       ${style.bg} ${style.border}
                                       ${editSlot === id ? "ring-2 ring-teal-400 shadow-md" : ""}`}
                         >
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-bold text-gray-400">{id}</span>
+                            <span className="text-[10px] font-bold text-gray-500">{id}</span>
                             <span className={`w-2 h-2 rounded-full ${style.dot}`} aria-hidden="true" />
                           </div>
 
                           <p className={`text-xs font-semibold leading-tight ${style.text} line-clamp-2`}>
                             {slot?.plant_name || "Empty"}
                           </p>
+
+                          {slot?.status && slot.status !== "Empty" && (
+                            <p className={`text-[10px] font-bold uppercase tracking-wide mt-0.5 ${style.text}`}>
+                              {slot.status}
+                            </p>
+                          )}
 
                           {slotLightZone && (
                             <p className="text-[10px] text-gray-500 mt-1">
@@ -239,13 +366,13 @@ export default function Tracker() {
                           )}
 
                           {harvestEta && (
-                            <p className="text-[10px] text-gray-400 mt-1">
+                            <p className="text-[10px] text-gray-500 mt-1">
                               🌾 {formatDate(harvestEta)}
                             </p>
                           )}
 
                           {slot?.student_team && (
-                            <p className="text-[10px] text-gray-400 mt-0.5 truncate">
+                            <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                               👤 {slot.student_team}
                             </p>
                           )}
@@ -268,27 +395,35 @@ export default function Tracker() {
                 const slotLightZone = SLOT_LIGHT_ZONE[id];
 
                 const harvestEta = plant && slot?.date_planted
-                  ? addDays(slot.date_planted, plant.harvest_days)
+                  ? etaDate(slot.date_planted, plant.harvest_days)
                   : null;
 
                 return (
                   <button
                     key={id}
-                    onClick={() => setEditSlot(editSlot === id ? null : id)}
-                    aria-expanded={editSlot === id}
-                    aria-label={`Slot ${id}${slotLightZone ? ` · ${slotLightZone}` : ""}`}
+                    onClick={(e) => openEditor(id, e.currentTarget)}
+                    disabled={!slot}
+                    aria-haspopup="dialog"
+                    aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""}${slotLightZone ? ` · ${slotLightZone}` : ""}`}
                     className={`w-full text-left flex items-center gap-3 px-4 py-3
                                 rounded-2xl border transition-all hover:shadow-sm
+                                disabled:opacity-50 disabled:cursor-not-allowed
                                 focus-visible:ring-2 focus-visible:ring-teal-700
                                 ${style.bg} ${style.border}
                                 ${editSlot === id ? "ring-2 ring-teal-400" : ""}`}
                   >
-                    <span className="text-xs font-bold text-gray-400 w-6 flex-shrink-0">{id}</span>
+                    <span className="text-xs font-bold text-gray-500 w-6 flex-shrink-0">{id}</span>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${style.dot}`} aria-hidden="true" />
 
                     <span className={`text-sm font-semibold flex-1 ${style.text}`}>
-                      {slot?.plant_name || <span className="text-gray-400 font-normal">Empty</span>}
+                      {slot?.plant_name || <span className="text-gray-500 font-normal">Empty</span>}
                     </span>
+
+                    {slot?.status && slot.status !== "Empty" && (
+                      <span className={`text-[10px] font-bold uppercase tracking-wide ${style.text}`}>
+                        {slot.status}
+                      </span>
+                    )}
 
                     {slotLightZone && (
                       <span className="text-[10px] text-gray-500 hidden sm:inline">
@@ -297,19 +432,19 @@ export default function Tracker() {
                     )}
 
                     {slot?.student_team && (
-                      <span className="text-[10px] text-gray-400 hidden sm:inline">
+                      <span className="text-[10px] text-gray-500 hidden sm:inline">
                         {slot.student_team}
                       </span>
                     )}
 
                     {harvestEta && (
-                      <span className="text-[10px] text-gray-400">
+                      <span className="text-[10px] text-gray-500">
                         🌾 {formatDate(harvestEta)}
                       </span>
                     )}
 
                     {slot?.date_planted && (
-                      <span className="text-[10px] text-gray-400 hidden sm:inline">
+                      <span className="text-[10px] text-gray-500 hidden sm:inline">
                         day {daysAgo(slot.date_planted)}
                       </span>
                     )}
@@ -322,12 +457,13 @@ export default function Tracker() {
           {/* ── Edit panel ─────────────────────────────────── */}
           {editSlot && slots[editSlot] && (
             <SlotEditPanel
+              key={editSlot}
               slotId={editSlot}
               slot={slots[editSlot]}
               plants={plants}
               plantMap={plantMap}
               onSave={saveSlot}
-              onClose={() => setEditSlot(null)}
+              onClose={closeEditor}
               slotLightZone={SLOT_LIGHT_ZONE[editSlot]}
             />
           )}
@@ -347,13 +483,32 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
     observation_notes: slot.observation_notes || "",
   });
   const [saving, setSaving] = useState(false);
+  const headingRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  const headingId  = `slot-edit-heading-${slotId}`;
+
+  // Focus the heading on open, close on Escape, lock background scroll.
+  // (Runs once per mount; onClose is read via ref so parent re-renders
+  // don't steal focus back to the heading.)
+  useEffect(() => {
+    headingRef.current?.focus();
+    const onKey = (e) => { if (e.key === "Escape") onCloseRef.current(); };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
 
   const selectedPlant = plantMap[form.plant_name];
   const germEta       = selectedPlant && form.date_planted
-    ? addDays(form.date_planted, selectedPlant.germination_days)
+    ? etaDate(form.date_planted, selectedPlant.germination_days)
     : null;
   const harvestEta    = selectedPlant && form.date_planted
-    ? addDays(form.date_planted, selectedPlant.harvest_days)
+    ? etaDate(form.date_planted, selectedPlant.harvest_days)
     : null;
 
   async function handleSave(e) {
@@ -370,15 +525,29 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
   }
 
   return (
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center md:p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40"
+        aria-hidden="true"
+        onClick={onClose}
+      />
     <div
-      className="bg-white border border-teal-200 rounded-3xl lg:rounded-2xl
-                 shadow-xl p-6 space-y-4 animate-fadeIn"
+      className="relative w-full md:max-w-lg max-h-[85vh] overflow-y-auto
+                 bg-white border border-teal-200 rounded-t-3xl md:rounded-2xl
+                 shadow-2xl p-6 space-y-4 animate-fadeIn"
       role="dialog"
-      aria-label={`Edit slot ${slotId}`}
+      aria-modal="true"
+      aria-labelledby={headingId}
     >
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-bold text-teal-800 text-base lg:text-lg">
+          <h2
+            id={headingId}
+            ref={headingRef}
+            tabIndex={-1}
+            className="font-bold text-teal-800 text-base lg:text-lg focus:outline-none"
+          >
             Edit Slot {slotId}
           </h2>
 
@@ -425,11 +594,11 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
         {selectedPlant && form.date_planted && (
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 text-center">
-              <p className="text-blue-400 uppercase font-bold tracking-wide text-[10px]">Germination</p>
+              <p className="text-blue-600 uppercase font-bold tracking-wide text-[10px]">Germination</p>
               <p className="font-semibold text-blue-700 mt-0.5">{formatDate(germEta)}</p>
             </div>
             <div className="bg-green-50 border border-green-200 rounded-xl p-2 text-center">
-              <p className="text-green-400 uppercase font-bold tracking-wide text-[10px]">Harvest ETA</p>
+              <p className="text-green-600 uppercase font-bold tracking-wide text-[10px]">Harvest ETA</p>
               <p className="font-semibold text-green-700 mt-0.5">{formatDate(harvestEta)}</p>
             </div>
           </div>
@@ -444,7 +613,7 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
             id={`date-${slotId}`}
             type="date"
             value={form.date_planted}
-            max={new Date().toISOString().split("T")[0]}
+            max={todayLocal()}
             onChange={(e) => setForm({ ...form, date_planted: e.target.value })}
             className="w-full p-3 border border-gray-300 rounded-xl text-sm
                        shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700"
@@ -520,6 +689,7 @@ function SlotEditPanel({ slotId, slot, plants, plantMap, onSave, onClose, slotLi
           </button>
         </div>
       </form>
+    </div>
     </div>
   );
 }

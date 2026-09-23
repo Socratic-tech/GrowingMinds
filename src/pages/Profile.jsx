@@ -4,6 +4,23 @@ import DOMPurify from "dompurify";
 import { supabase } from "../supabase/client";
 import { useAuth } from "../context/AuthProvider";
 import { useToast } from "../components/ui/toast";
+import { displayName, initials, affiliation } from "../utils/displayName";
+import ProfileDetailsForm from "../components/ProfileDetailsForm";
+
+// Make a clickable card keyboard-accessible (Enter / Space activate it).
+function clickableProps(onActivate) {
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onActivate();
+      }
+    },
+  };
+}
 
 export default function Profile() {
   const { userId } = useParams();
@@ -21,13 +38,18 @@ export default function Profile() {
   const [bio, setBio] = useState("");
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
 
   useEffect(() => {
-    loadProfile();
+    // Ignore responses for a previous userId if the route changes quickly.
+    let cancelled = false;
+    loadProfile(() => cancelled);
+    return () => { cancelled = true; };
   }, [userId]);
 
-  async function loadProfile() {
+  async function loadProfile(isCancelled) {
     setLoading(true);
+    setEditing(false);
 
     try {
       const [profileRes, postsRes, questionsRes] = await Promise.all([
@@ -46,26 +68,28 @@ export default function Profile() {
           .limit(5),
       ]);
 
+      if (isCancelled()) return;
+
       if (profileRes.error) {
         showToast({ title: "Couldn't load profile", description: profileRes.error.message, type: "error" });
       }
 
-      if (profileRes.data) {
-        setProfile(profileRes.data);
-        setBio(profileRes.data.bio || "");
-        setDraft(profileRes.data.bio || "");
-      }
+      setProfile(profileRes.data || null);
+      setBio(profileRes.data?.bio || "");
+      setDraft(profileRes.data?.bio || "");
 
       setPosts(postsRes.data || []);
       setQuestions(questionsRes.data || []);
     } catch (err) {
+      if (isCancelled()) return;
       showToast({ title: "Error loading profile", description: err.message, type: "error" });
     } finally {
-      setLoading(false);
+      if (!isCancelled()) setLoading(false);
     }
   }
 
   async function saveBio() {
+    if (saving) return;
     setSaving(true);
     const { error } = await supabase
       .from("profiles")
@@ -99,8 +123,9 @@ export default function Profile() {
     );
   }
 
-  const username = profile.email?.split("@")[0];
-  const initial = profile.email?.charAt(0).toUpperCase();
+  const username = displayName(profile);
+  const initial = initials(profile);
+  const org = affiliation(profile);
   const joined = profile.created_at
     ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })
     : "—";
@@ -119,6 +144,7 @@ export default function Profile() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-teal-800 truncate">{username}</p>
+            {org && <p className="text-sm text-gray-600 truncate">{org}</p>}
             <p className="text-xs text-gray-400 truncate">{profile.email}</p>
             <span className="inline-block mt-1 px-2 py-0.5 bg-teal-100 text-teal-700
                              rounded-full text-[10px] font-bold uppercase">
@@ -180,6 +206,37 @@ export default function Profile() {
           )}
         </div>
 
+        {/* Your details + sign out (own profile only). On phones this is
+            the only place to sign out, so it lives here as well as the
+            desktop sidebar. */}
+        {isOwnProfile && (
+          <div className="border-t border-gray-100 pt-4 space-y-3">
+            {editingDetails ? (
+              <ProfileDetailsForm
+                onSaved={(u) => { setProfile((p) => ({ ...p, ...u })); setEditingDetails(false); }}
+                onCancel={() => setEditingDetails(false)}
+              />
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingDetails(true)}
+                  className="text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl px-4 py-2"
+                >
+                  Edit name &amp; school
+                </button>
+                <button
+                  type="button"
+                  onClick={() => supabase.auth.signOut()}
+                  className="text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-xl px-4 py-2"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-3 divide-x divide-gray-100 border-t border-gray-100 pt-4">
           {[
@@ -204,9 +261,10 @@ export default function Profile() {
           {posts.map((post) => (
             <div
               key={post.id}
-              onClick={() => navigate("/feed")}
+              {...clickableProps(() => navigate("/feed"))}
               className="bg-white rounded-2xl lg:rounded-xl p-4 shadow border border-gray-200
-                         space-y-1 cursor-pointer hover:shadow-md transition-shadow"
+                         space-y-1 cursor-pointer hover:shadow-md transition-shadow
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
             >
               <div
                 className="text-sm text-gray-700 leading-relaxed line-clamp-2"
@@ -229,9 +287,10 @@ export default function Profile() {
           {questions.map((q) => (
             <div
               key={q.id}
-              onClick={() => navigate("/qa")}
+              {...clickableProps(() => navigate("/qa"))}
               className="bg-white rounded-2xl lg:rounded-xl p-4 shadow border border-gray-200
-                         space-y-1 cursor-pointer hover:shadow-md transition-shadow"
+                         space-y-1 cursor-pointer hover:shadow-md transition-shadow
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
             >
               <p className="text-sm font-medium text-gray-700">{q.title}</p>
               <p className="text-[10px] text-gray-400">

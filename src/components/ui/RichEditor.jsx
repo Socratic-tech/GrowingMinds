@@ -1,8 +1,13 @@
+import { useEffect, useId } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 
-export default function RichEditor({ value, onChange }) {
+export default function RichEditor({ value, onChange, ariaLabel = "Post content" }) {
+  const editorId = useId();
   const editor = useEditor({
+    // TipTap v3 no longer re-renders on every transaction by default; we need
+    // it so the toolbar's active (bold/italic) states stay in sync.
+    shouldRerenderOnTransaction: true,
     extensions: [
       StarterKit.configure({
         heading: false,
@@ -12,8 +17,24 @@ export default function RichEditor({ value, onChange }) {
       }),
     ],
     content: value,
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    editorProps: {
+      attributes: {
+        "aria-label": ariaLabel,
+        role: "textbox",
+        "aria-multiline": "true",
+        id: editorId,
+      },
+    },
+    // Emit "" for an empty editor so a bare "<p></p>" can never be posted.
+    onUpdate: ({ editor }) => onChange(editor.isEmpty ? "" : editor.getHTML()),
   });
+
+  // Parent clears `value` after a successful post -> clear the editor too.
+  useEffect(() => {
+    if (editor && value === "" && !editor.isEmpty) {
+      editor.commands.clearContent();
+    }
+  }, [editor, value]);
 
   if (!editor) return null;
 
@@ -47,8 +68,8 @@ export default function RichEditor({ value, onChange }) {
       </div>
 
       {/* Editor Container */}
-      <label htmlFor="editor" className="sr-only">
-        Post content
+      <label htmlFor={editorId} className="sr-only">
+        {ariaLabel}
       </label>
 
       <div
@@ -57,7 +78,7 @@ export default function RichEditor({ value, onChange }) {
           p-3 shadow-inner min-h-[100px]
         "
       >
-        <EditorContent id="editor" editor={editor} />
+        <EditorContent editor={editor} />
       </div>
     </div>
   );

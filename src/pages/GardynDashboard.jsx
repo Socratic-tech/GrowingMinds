@@ -1,25 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabase/client";
 import { useAuth } from "../context/AuthProvider";
+import { useToast } from "../components/ui/toast";
 import { Skeleton } from "../components/ui/Skeleton";
+import { getStatus as getMaintenanceStatus } from "./Maintenance";
+import { formatLocalDate } from "../utils/date";
 
-/* ─── Maintenance status helper (same logic as Maintenance.jsx) ── */
-function getMaintenanceStatus(task) {
-  if (!task.frequency_days || !task.last_completed) return "needs-date";
-  const due = new Date(task.last_completed);
-  due.setDate(due.getDate() + task.frequency_days);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const daysLeft = Math.ceil((due - today) / 86400000);
-  if (daysLeft <= 0) return "overdue";
-  if (daysLeft <= 2) return "due-soon";
-  return "on-track";
-}
+const MAINT_LABEL = {
+  "overdue":    "Overdue",
+  "due-today":  "Due Today",
+  "needs-date": "Needs Date",
+};
+const MAINT_PRIORITY = { "overdue": 0, "due-today": 1, "needs-date": 2 };
 
 function formatDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatLocalDate(iso);
 }
 
 /* ─── Main component ─────────────────────────────────────── */
@@ -27,15 +24,20 @@ export default function GardynDashboard() {
   const { user }  = useAuth();
   const navigate  = useNavigate();
 
+  const { showToast } = useToast();
+
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [data,    setData]    = useState({
     slots:       [],
     maintenance: [],
     harvests:    [],
+    allWeights:  [],
   });
 
-  const load = useCallback(async () => {
-    const [slotRes, maintRes, harvestRes] = await Promise.all([
+  const load = useCallback(async (isCancelled = () => false) => {
+    setLoadError(null);
+    const [slotRes, maintRes, harvestRes, weightRes] = await Promise.all([
       supabase
         .from("tracker_slots")
         .select("slot_id, plant_name, status, date_planted, student_team")
@@ -50,17 +52,41 @@ export default function GardynDashboard() {
         .eq("user_id", user.id)
         .order("harvest_date", { ascending: false })
         .limit(5),
+      // All-time total: fetch only the weight column.
+      supabase
+        .from("harvest_log")
+        .select("amount_grams")
+        .eq("user_id", user.id),
     ]);
+    if (isCancelled()) return;
+
+    const firstError = [slotRes, maintRes, harvestRes, weightRes].find((r) => r.error)?.error;
+    if (firstError) {
+      showToast({ title: "Couldn't load your dashboard", description: firstError.message, type: "error" });
+      setLoadError(firstError.message);
+      setLoading(false);
+      return;
+    }
 
     setData({
       slots:       slotRes.data    || [],
       maintenance: maintRes.data   || [],
       harvests:    harvestRes.data || [],
+      allWeights:  weightRes.data  || [],
     });
     setLoading(false);
-  }, [user.id]);
+  }, [user.id, showToast]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load(() => cancelled);
+    return () => { cancelled = true; };
+  }, [load]);
+
+  function retryLoad() {
+    setLoading(true);
+    load();
+  }
 
   /* ── Derived stats ───────────────────────────────────────── */
   const slots = data.slots;
@@ -69,15 +95,19 @@ export default function GardynDashboard() {
   const germinating   = slots.filter((s) => s.status === "Germinating").length;
   const emptySlots    = slots.filter((s) => s.status === "Empty").length;
 
-  const overdueCount  = data.maintenance.filter(
-    (t) => getMaintenanceStatus(t) === "overdue" || getMaintenanceStatus(t) === "needs-date"
-  ).length;
+  const maintStatuses = data.maintenance.map((t) => ({ task: t, status: getMaintenanceStatus(t) }));
+  const dueCount       = maintStatuses.filter((m) => m.status === "overdue" || m.status === "due-today").length;
+  const needsDateCount = maintStatuses.filter((m) => m.status === "needs-date").length;
 
-  const totalHarvestGrams = data.harvests.reduce((s, h) => s + (h.amount_grams || 0), 0);
+  const totalHarvestGrams = data.allWeights.reduce((s, h) => s + (Number(h.amount_grams) || 0), 0);
+  const totalHarvestCount = data.allWeights.length;
 
-  const urgentMaint = data.maintenance
-    .filter((t) => ["overdue","needs-date"].includes(getMaintenanceStatus(t)))
+  const urgentMaint = maintStatuses
+    .filter((m) => m.status in MAINT_PRIORITY)
+    .sort((a, b) => MAINT_PRIORITY[a.status] - MAINT_PRIORITY[b.status])
     .slice(0, 3);
+
+  const isNewTeacher = slots.length === 0;
 
   const readySlots = slots.filter((s) => s.status === "Ready to Harvest");
 
@@ -105,8 +135,22 @@ export default function GardynDashboard() {
 
       {loading ? (
         <DashboardSkeleton />
+      ) : loadError ? (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center space-y-3" role="alert">
+          <p className="font-semibold text-red-800">We couldn't load your dashboard.</p>
+          <p className="text-xs text-red-700">{loadError}</p>
+          <button
+            onClick={retryLoad}
+            className="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-xl text-sm
+                       font-semibold min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-700"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <>
+          {isNewTeacher && <GetStartedCard />}
+
           {/* ── Stat grid ──────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <DashCard
@@ -136,12 +180,12 @@ export default function GardynDashboard() {
             />
             <DashCard
               icon="🔧"
-              value={overdueCount}
+              value={dueCount}
               label="Maint. Due"
-              sub="needs action"
-              color={overdueCount > 0 ? "red" : "gray"}
+              sub={needsDateCount > 0 ? `${needsDateCount} need a date` : "overdue or today"}
+              color={dueCount > 0 ? "red" : "gray"}
               onClick={() => navigate("/maintenance")}
-              highlight={overdueCount > 0}
+              highlight={dueCount > 0}
             />
           </div>
 
@@ -181,7 +225,7 @@ export default function GardynDashboard() {
                 </button>
               </div>
               <div className="space-y-2">
-                {urgentMaint.map((t) => (
+                {urgentMaint.map(({ task: t, status }) => (
                   <button
                     key={t.task_name}
                     onClick={() => navigate("/maintenance")}
@@ -192,7 +236,7 @@ export default function GardynDashboard() {
                   >
                     <span className="text-sm font-medium text-red-800">{t.task_name}</span>
                     <span className="text-[10px] font-bold text-red-600 uppercase tracking-wide">
-                      {t.last_completed ? "Overdue" : "Needs Date"}
+                      {MAINT_LABEL[status]}
                     </span>
                   </button>
                 ))}
@@ -218,7 +262,7 @@ export default function GardynDashboard() {
               <button
                 onClick={() => navigate("/harvest")}
                 className="w-full text-center py-8 bg-gray-50 border border-dashed
-                           border-gray-200 rounded-2xl text-gray-400 text-sm
+                           border-gray-200 rounded-2xl text-gray-500 text-sm
                            hover:bg-gray-100 transition-colors"
               >
                 No harvests yet · Log your first one →
@@ -227,7 +271,7 @@ export default function GardynDashboard() {
               <div className="space-y-2">
                 <div className="bg-teal-700 text-white rounded-2xl px-4 py-2 flex items-center justify-between">
                   <span className="text-sm font-semibold">
-                    {data.harvests.length} recent harvest{data.harvests.length !== 1 ? "s" : ""}
+                    {totalHarvestCount} harvest{totalHarvestCount !== 1 ? "s" : ""} all-time
                   </span>
                   {totalHarvestGrams > 0 && (
                     <span className="text-sm font-bold">
@@ -247,14 +291,14 @@ export default function GardynDashboard() {
                     <div>
                       <span className="text-sm font-medium text-gray-800">{h.plant_name}</span>
                       {h.student_team && (
-                        <span className="text-xs text-gray-400 ml-2">· {h.student_team}</span>
+                        <span className="text-xs text-gray-500 ml-2">· {h.student_team}</span>
                       )}
                     </div>
                     <div className="text-right">
                       {h.amount_grams != null && (
                         <span className="text-xs font-bold text-teal-700">{h.amount_grams}g</span>
                       )}
-                      <span className="text-[10px] text-gray-400 block">
+                      <span className="text-[10px] text-gray-500 block">
                         {formatDate(h.harvest_date)}
                       </span>
                     </div>
@@ -296,6 +340,49 @@ export default function GardynDashboard() {
   );
 }
 
+/* ─── Get Started (brand-new teacher) ───────────────────── */
+function GetStartedCard() {
+  const steps = [
+    { to: "/tracker",     label: "Set up your tracker",            hint: "Add what's planted in each slot." },
+    { to: "/maintenance", label: "Log your maintenance dates",     hint: "Enter when you last cleaned, dosed, and checked." },
+    { to: "/plants",      label: "Browse the Plant Library",       hint: "See germination and harvest times." },
+    { to: "/lessons",     label: "Try an investigation in Lesson Lab", hint: "Start from a ready-made template." },
+  ];
+  return (
+    <section
+      aria-labelledby="get-started-heading"
+      className="bg-teal-50 border border-teal-200 rounded-3xl lg:rounded-2xl p-5 shadow-sm"
+    >
+      <h2 id="get-started-heading" className="font-bold text-teal-800 text-base lg:text-lg">
+        👋 Welcome! Let's get your Gardyn classroom started
+      </h2>
+      <p className="text-xs text-teal-700 mt-1">A few quick steps and your dashboard will fill in.</p>
+      <ol className="mt-4 space-y-2">
+        {steps.map((s, i) => (
+          <li key={s.to}>
+            <Link
+              to={s.to}
+              className="flex items-center gap-3 bg-white border border-teal-100 rounded-xl px-4 py-3
+                         hover:border-teal-300 hover:shadow-sm transition-all
+                         focus-visible:ring-2 focus-visible:ring-teal-700"
+            >
+              <span className="w-7 h-7 flex-shrink-0 rounded-full bg-teal-700 text-white text-sm font-bold
+                               flex items-center justify-center" aria-hidden="true">
+                {i + 1}
+              </span>
+              <span className="flex-1">
+                <span className="block text-sm font-semibold text-gray-900">{s.label}</span>
+                <span className="block text-xs text-gray-600">{s.hint}</span>
+              </span>
+              <span className="text-teal-700" aria-hidden="true">→</span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 /* ─── Dash Card ──────────────────────────────────────────── */
 function DashCard({ icon, value, label, sub, color, onClick, highlight }) {
   const COLORS = {
@@ -319,7 +406,7 @@ function DashCard({ icon, value, label, sub, color, onClick, highlight }) {
       <p className="text-[10px] font-semibold uppercase tracking-wide mt-0.5 opacity-80">
         {label}
       </p>
-      <p className="text-[9px] opacity-50 mt-0.5">{sub}</p>
+      <p className="text-[10px] opacity-75 mt-0.5">{sub}</p>
     </button>
   );
 }

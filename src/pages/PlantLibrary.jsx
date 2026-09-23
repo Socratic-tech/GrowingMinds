@@ -283,12 +283,12 @@ function PlantCard({ plant, isExpanded, onToggle }) {
           {/* Timing summary */}
           <div className="text-right flex-shrink-0 space-y-1">
             {plant.germination_days != null && (
-              <p className="text-[10px] text-gray-400">
+              <p className="text-[10px] text-gray-500">
                 <span className="font-semibold text-gray-600">{plant.germination_days}d</span> germ.
               </p>
             )}
             {plant.harvest_days != null && (
-              <p className="text-[10px] text-gray-400">
+              <p className="text-[10px] text-gray-500">
                 <span className="font-semibold text-teal-600">{plant.harvest_days}d</span> harvest
               </p>
             )}
@@ -348,7 +348,7 @@ function PlantCard({ plant, isExpanded, onToggle }) {
 
           {/* Price */}
           {plant.price && (
-            <p className="text-[10px] text-gray-400 pt-1">
+            <p className="text-[10px] text-gray-500 pt-1">
               Gardyn yCube: <span className="font-semibold text-gray-600">{plant.price}</span>
             </p>
           )}
@@ -361,7 +361,7 @@ function PlantCard({ plant, isExpanded, onToggle }) {
 function StatPill({ label, value }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-2 py-2 text-center shadow-sm">
-      <p className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
       <p className="text-sm font-bold text-teal-700 mt-0.5">{value}</p>
     </div>
   );

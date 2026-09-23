@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../supabase/client";
 import { useAuth } from "../context/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "./ui/toast";
 
 export default function Notifications() {
   const { user } = useAuth();
@@ -9,6 +10,23 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const { showToast } = useToast();
+
+  // Unread badge comes from its own count query so it isn't capped by the
+  // 10-item list below.
+  async function loadUnreadCount() {
+    if (!user) return;
+    const { count, error } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("read", false);
+    if (error) {
+      console.error("Failed to count unread notifications:", error);
+      return;
+    }
+    setUnreadCount(count || 0);
+  }
 
   // Load notifications
   async function loadNotifications() {
@@ -28,7 +46,6 @@ export default function Notifications() {
       }
 
       setNotifications(data || []);
-      setUnreadCount((data || []).filter(n => !n.read).length);
     } catch (err) {
       console.error("Notification load exception:", err);
     }
@@ -36,28 +53,44 @@ export default function Notifications() {
 
   // Mark notification as read
   async function markAsRead(notificationId) {
-    await supabase
+    const { error } = await supabase
       .from("notifications")
       .update({ read: true })
       .eq("id", notificationId);
 
-    loadNotifications();
+    if (error) {
+      console.error("Failed to mark notification read:", error);
+      showToast({ title: "Couldn't mark notification as read", description: error.message, type: "error" });
+      return;
+    }
+
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+    );
+    loadUnreadCount();
   }
 
   // Mark all as read
   async function markAllAsRead() {
-    await supabase
+    const { error } = await supabase
       .from("notifications")
       .update({ read: true })
       .eq("user_id", user.id)
       .eq("read", false);
 
-    loadNotifications();
+    if (error) {
+      console.error("Failed to mark all notifications read:", error);
+      showToast({ title: "Couldn't mark notifications as read", description: error.message, type: "error" });
+      return;
+    }
+
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    loadUnreadCount();
   }
 
   // Handle notification click
   function handleNotificationClick(notification) {
-    markAsRead(notification.id);
+    if (!notification.read) markAsRead(notification.id);
     setShowDropdown(false);
 
     // Navigate based on notification type
@@ -73,6 +106,7 @@ export default function Notifications() {
     if (!user?.id) return;
 
     loadNotifications();
+    loadUnreadCount();
 
     // Subscribe to new notifications (fail silently if table doesn't exist)
     let channel;
@@ -89,6 +123,7 @@ export default function Notifications() {
           },
           () => {
             loadNotifications();
+            loadUnreadCount();
           }
         )
         .subscribe();
@@ -114,7 +149,8 @@ export default function Notifications() {
         onClick={() => setShowDropdown(!showDropdown)}
         className="relative w-10 h-10 flex items-center justify-center rounded-xl
                    text-white hover:bg-white/10 transition-colors"
-        aria-label="View notifications"
+        aria-label={unreadCount > 0 ? `View notifications (${unreadCount} unread)` : "View notifications"}
+        aria-expanded={showDropdown}
       >
         <span className="text-2xl">🔔</span>
 
@@ -137,8 +173,9 @@ export default function Notifications() {
           />
 
           {/* Dropdown Panel */}
-          <div className="absolute right-0 top-12 w-80 bg-white rounded-xl shadow-xl
-                         border border-gray-200 z-50 max-h-96 overflow-hidden">
+          <div className="fixed inset-x-4 top-20 md:absolute md:inset-auto md:right-0 md:top-12
+                         md:w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50
+                         max-h-96 overflow-hidden">
 
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200">

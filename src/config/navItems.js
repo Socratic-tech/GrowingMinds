@@ -1,7 +1,6 @@
 // Single source of truth for the primary navigation, used by both the
-// desktop Sidebar and the mobile bottom nav in ShellLayout. Previously these
-// lived as two separately hardcoded arrays that could silently drift apart
-// whenever a page was added or renamed - add new items here once.
+// desktop Sidebar and the mobile bottom nav in ShellLayout. Add new items
+// here once.
 export function getNavItems(isAdmin) {
   const items = [
     { path: "/feed", label: "Feed", icon: "🏠" },
@@ -15,4 +14,14 @@ export function getNavItems(isAdmin) {
   }
 
   return items;
+}
+
+// Gardyn sub-pages (tracker, maintenance, ...) highlight the Gardyn tab, and
+// "/" is the Feed.
+const GARDYN_PATHS = ["/gardyn", "/tracker", "/maintenance", "/harvest", "/plants", "/lessons"];
+
+export function isNavActive(itemPath, pathname) {
+  if (itemPath === "/feed") return pathname === "/" || pathname === "/feed";
+  if (itemPath === "/gardyn") return GARDYN_PATHS.some((p) => pathname.startsWith(p));
+  return pathname.startsWith(itemPath);
 }

@@ -3,6 +3,9 @@ import { supabase } from "../supabase/client";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
+import {
+  todayLocal, parseLocalDate, addDays, daysBetween, isValidDateString, formatLocalDate,
+} from "../utils/date";
 
 /* ─── Default task templates ─────────────────────────────── */
 const DEFAULT_TASKS = [
@@ -19,18 +22,26 @@ const DEFAULT_TASKS = [
   { task_name: "Pollination support for fruiting",   frequency_days: 3,  owner: "Student helper", sort_order: 10 },
 ];
 
-/* ─── Status helpers ─────────────────────────────────────── */
-function getStatus(task) {
+/* ─── Status helpers (shared with GardynDashboard) ────────── */
+/** Whole days until the task is next due (negative = overdue), or null. */
+export function daysUntilDue(task) {
+  if (!task.frequency_days || !task.last_completed) return null;
+  const last = parseLocalDate(task.last_completed);
+  if (!last) return null;
+  return daysBetween(new Date(), addDays(last, task.frequency_days));
+}
+
+/**
+ * "reminder" | "needs-date" | "overdue" | "due-today" | "due-soon" | "on-track".
+ * "needs-date" is NOT overdue - it just means no completion date is logged yet.
+ */
+export function getStatus(task) {
   if (!task.frequency_days) return "reminder";
-  if (!task.last_completed) return "needs-date";
-  const due = new Date(task.last_completed);
-  due.setDate(due.getDate() + task.frequency_days);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const daysLeft = Math.ceil((due - today) / 86400000);
-  if (daysLeft < 0)  return "overdue";
-  if (daysLeft === 0) return "due-today";
-  if (daysLeft <= 2) return "due-soon";
+  const days = daysUntilDue(task);
+  if (days === null) return "needs-date";
+  if (days < 0)  return "overdue";
+  if (days === 0) return "due-today";
+  if (days <= 2) return "due-soon";
   return "on-track";
 }
 
@@ -43,18 +54,63 @@ const STATUS_META = {
   "reminder":   { label: "Reminder",    dot: "bg-blue-400",   text: "text-blue-700",   bg: "bg-blue-50   border-blue-200"   },
 };
 
-function daysUntilDue(task) {
-  if (!task.frequency_days || !task.last_completed) return null;
-  const due = new Date(task.last_completed);
-  due.setDate(due.getDate() + task.frequency_days);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.ceil((due - today) / 86400000);
-}
-
 function formatDate(iso) {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return formatLocalDate(iso, { month: "short", day: "numeric", year: "numeric" });
+}
+
+/* ─── First-visit seeding ────────────────────────────────── */
+// Module-level in-flight guard: StrictMode double effects / quick remounts
+// share one seed request per user instead of inserting twice.
+const seedInFlight = new Map();
+
+async function seedMissingTasks(userId, existingNames) {
+  const missing = DEFAULT_TASKS
+    .filter((t) => !existingNames.has(t.task_name))
+    .map((t) => ({ ...t, user_id: userId }));
+  if (missing.length === 0) return null;
+
+  const { error } = await supabase
+    .from("maintenance_tasks")
+    .upsert(missing, { onConflict: "user_id,task_name", ignoreDuplicates: true });
+  if (!error) return null;
+  if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+
+  // Unique constraint not migrated yet: re-select, then insert only what's still missing.
+  const { data: current, error: selErr } = await supabase
+    .from("maintenance_tasks")
+    .select("task_name")
+    .eq("user_id", userId);
+  if (selErr) return selErr;
+  const have = new Set((current || []).map((r) => r.task_name));
+  const stillMissing = missing.filter((t) => !have.has(t.task_name));
+  if (stillMissing.length === 0) return null;
+  const { error: insErr } = await supabase.from("maintenance_tasks").insert(stillMissing);
+  return insErr || null;
+}
+
+function seedOnce(userId, existingNames) {
+  if (!seedInFlight.has(userId)) {
+    const p = seedMissingTasks(userId, existingNames).finally(() => seedInFlight.delete(userId));
+    seedInFlight.set(userId, p);
+  }
+  return seedInFlight.get(userId);
+}
+
+function rowTime(r) {
+  return Date.parse(r.updated_at || r.created_at || "") || 0;
+}
+
+/** Keep one row per task_name (most recently updated/created wins). */
+function dedupeTasks(rows) {
+  const byName = new Map();
+  for (const r of rows) {
+    const prev = byName.get(r.task_name);
+    // Prefer the most recent last_completed (matches the SQL dedupe), then newest row.
+    const a = r.last_completed || "", b = prev?.last_completed || "";
+    if (!prev || a > b || (a === b && rowTime(r) >= rowTime(prev))) byName.set(r.task_name, r);
+  }
+  return [...byName.values()].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
 
 /* ─── Main component ─────────────────────────────────────── */
@@ -66,48 +122,66 @@ export default function Maintenance() {
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(null); // task id being saved
 
+  const [loadError, setLoadError] = useState(null);
+
   /* ── Load or seed tasks ──────────────────────────────────── */
-  const loadTasks = useCallback(async () => {
-    const { data, error } = await supabase
+  const loadTasks = useCallback(async (isCancelled = () => false) => {
+    setLoadError(null);
+    const selectAll = () => supabase
       .from("maintenance_tasks")
       .select("*")
       .eq("user_id", user.id)
       .order("sort_order", { ascending: true });
 
+    let { data, error } = await selectAll();
+    if (isCancelled()) return;
+
     if (error) {
       showToast({ title: "Failed to load maintenance tasks", description: error.message, type: "error" });
+      setLoadError(error.message);
       setLoading(false);
       return;
     }
 
     if (!data || data.length === 0) {
-      // First visit — seed default tasks for this user
-      const toInsert = DEFAULT_TASKS.map((t) => ({ ...t, user_id: user.id }));
-      const { data: seeded, error: seedErr } = await supabase
-        .from("maintenance_tasks")
-        .insert(toInsert)
-        .select();
-
+      // First visit - seed default tasks for this user (guarded against double insert)
+      const seedErr = await seedOnce(user.id, new Set());
+      if (isCancelled()) return;
       if (seedErr) {
         showToast({ title: "Could not create maintenance tasks", description: seedErr.message, type: "error" });
-      } else {
-        setTasks(seeded || []);
+        setLoadError(seedErr.message);
+        setLoading(false);
+        return;
       }
-    } else {
-      setTasks(data);
+      ({ data, error } = await selectAll());
+      if (isCancelled()) return;
+      if (error) {
+        showToast({ title: "Failed to load maintenance tasks", description: error.message, type: "error" });
+        setLoadError(error.message);
+        setLoading(false);
+        return;
+      }
     }
 
+    setTasks(dedupeTasks(data || []));
     setLoading(false);
   }, [user.id, showToast]);
 
   useEffect(() => {
-    loadTasks();
+    let cancelled = false;
+    loadTasks(() => cancelled);
+    return () => { cancelled = true; };
   }, [loadTasks]);
+
+  function retryLoad() {
+    setLoading(true);
+    loadTasks();
+  }
 
   /* ── Mark complete (set last_completed = today) ──────────── */
   async function markComplete(task) {
     setSaving(task.id);
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayLocal();
 
     const { error } = await supabase
       .from("maintenance_tasks")
@@ -127,6 +201,15 @@ export default function Maintenance() {
 
   /* ── Update last_completed via date input ─────────────────── */
   async function updateDate(task, dateVal) {
+    if ((dateVal || null) === (task.last_completed || null)) return true;
+    if (dateVal && !isValidDateString(dateVal)) {
+      showToast({
+        title: "Please enter a valid date",
+        description: "Use a real date from 2020 up to today (no future dates).",
+        type: "error",
+      });
+      return false;
+    }
     setSaving(task.id);
     const { error } = await supabase
       .from("maintenance_tasks")
@@ -139,14 +222,17 @@ export default function Maintenance() {
       setTasks((prev) =>
         prev.map((t) => t.id === task.id ? { ...t, last_completed: dateVal || null } : t)
       );
+      showToast({ title: `"${task.task_name}" date saved`, type: "success" });
     }
     setSaving(null);
+    return !error;
   }
 
   /* ── Summary stats ───────────────────────────────────────── */
   const overdue  = tasks.filter((t) => getStatus(t) === "overdue" || getStatus(t) === "due-today").length;
   const dueSoon  = tasks.filter((t) => getStatus(t) === "due-soon").length;
   const onTrack  = tasks.filter((t) => getStatus(t) === "on-track").length;
+  const needsDate = tasks.filter((t) => getStatus(t) === "needs-date").length;
 
   /* ── Group by owner ──────────────────────────────────────── */
   const teacherTasks  = tasks.filter((t) => t.owner === "Teacher");
@@ -176,6 +262,18 @@ export default function Maintenance() {
 
       {loading ? (
         <MaintenanceSkeleton />
+      ) : loadError && tasks.length === 0 ? (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center space-y-3" role="alert">
+          <p className="font-semibold text-red-800">We couldn't load your maintenance schedule.</p>
+          <p className="text-xs text-red-700">{loadError}</p>
+          <button
+            onClick={retryLoad}
+            className="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-xl text-sm
+                       font-semibold min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-700"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <>
           {/* ── Summary row ────────────────────────────────── */}
@@ -196,6 +294,13 @@ export default function Maintenance() {
               color="teal"
             />
           </div>
+
+          {needsDate > 0 && (
+            <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+              {needsDate} task{needsDate !== 1 ? "s need" : " needs"} a starting date. Tap 📅 on a task
+              to enter when it was last done, or tap Done if you did it today.
+            </p>
+          )}
 
           {/* ── Teacher tasks ──────────────────────────────── */}
           <TaskGroup
@@ -250,6 +355,15 @@ function TaskGroup({ title, icon, tasks, saving, onMarkComplete, onDateChange })
 /* ─── Task Row ───────────────────────────────────────────── */
 function TaskRow({ task, saving, onMarkComplete, onDateChange }) {
   const [showDate, setShowDate] = useState(false);
+  const [draftDate, setDraftDate] = useState(task.last_completed || "");
+
+  // Keep the draft in sync when the saved value changes (e.g. "Done" pressed).
+  useEffect(() => { setDraftDate(task.last_completed || ""); }, [task.last_completed]);
+
+  async function commitDate() {
+    const ok = await onDateChange(task, draftDate);
+    if (!ok) setDraftDate(task.last_completed || "");
+  }
   const status = getStatus(task);
   const meta   = STATUS_META[status];
   const days   = daysUntilDue(task);
@@ -294,14 +408,14 @@ function TaskRow({ task, saving, onMarkComplete, onDateChange }) {
 
               {/* Frequency */}
               {task.frequency_days && (
-                <span className="text-[10px] text-gray-400">
+                <span className="text-[10px] text-gray-500">
                   every {task.frequency_days}d
                 </span>
               )}
 
               {/* Last completed */}
               {task.last_completed && (
-                <span className="text-[10px] text-gray-400">
+                <span className="text-[10px] text-gray-500">
                   last: {formatDate(task.last_completed)}
                 </span>
               )}
@@ -351,9 +465,13 @@ function TaskRow({ task, saving, onMarkComplete, onDateChange }) {
             <input
               id={`date-${task.id}`}
               type="date"
-              defaultValue={task.last_completed || ""}
-              max={new Date().toISOString().split("T")[0]}
-              onChange={(e) => onDateChange(task, e.target.value)}
+              value={draftDate}
+              min="2020-01-01"
+              max={todayLocal()}
+              disabled={saving}
+              onChange={(e) => setDraftDate(e.target.value)}
+              onBlur={commitDate}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
               className="text-sm border border-gray-300 rounded-lg px-2 py-1
                          focus-visible:ring-2 focus-visible:ring-teal-700 bg-white"
             />

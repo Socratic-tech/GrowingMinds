@@ -3,6 +3,9 @@ import { supabase } from "../supabase/client";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
+import { todayLocal, isValidDateString, formatLocalDate } from "../utils/date";
+
+const MAX_GRAMS = 10000;
 
 const SLOT_IDS = ["A","B","C"].flatMap((c) =>
   [1,2,3,4,5,6,7,8,9,10].map((r) => `${c}${r}`)
@@ -10,7 +13,7 @@ const SLOT_IDS = ["A","B","C"].flatMap((c) =>
 
 function formatDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return formatLocalDate(iso, { month: "short", day: "numeric", year: "numeric" });
 }
 
 /* ─── Main component ─────────────────────────────────────── */
@@ -25,7 +28,7 @@ export default function HarvestLog() {
   const [saving,   setSaving]   = useState(false);
 
   const [form, setForm] = useState({
-    harvest_date: new Date().toISOString().split("T")[0],
+    harvest_date: todayLocal(),
     plant_name:   "",
     slot_id:      "",
     student_team: "",
@@ -69,6 +72,18 @@ export default function HarvestLog() {
       showToast({ title: "Please select a plant", type: "error" });
       return;
     }
+    if (!isValidDateString(form.harvest_date)) {
+      showToast({ title: "Please enter a valid harvest date", description: "Dates can't be in the future.", type: "error" });
+      return;
+    }
+    let grams = null;
+    if (String(form.amount_grams).trim() !== "") {
+      grams = Number(form.amount_grams);
+      if (!Number.isFinite(grams) || grams <= 0 || grams > MAX_GRAMS) {
+        showToast({ title: `Amount must be between 0 and ${MAX_GRAMS.toLocaleString()} g`, type: "error" });
+        return;
+      }
+    }
 
     setSaving(true);
     const { error } = await supabase.from("harvest_log").insert({
@@ -77,16 +92,17 @@ export default function HarvestLog() {
       plant_name:   form.plant_name,
       slot_id:      form.slot_id   || null,
       student_team: form.student_team || null,
-      amount_grams: form.amount_grams ? parseFloat(form.amount_grams) : null,
+      amount_grams: grams,
       notes:        form.notes     || null,
     });
 
     if (error) {
+      // Keep the form as-is so the teacher can retry without re-typing.
       showToast({ title: "Failed to log harvest", description: error.message, type: "error" });
     } else {
       showToast({ title: "Harvest logged!", type: "success" });
       setForm({
-        harvest_date: new Date().toISOString().split("T")[0],
+        harvest_date: todayLocal(),
         plant_name: "", slot_id: "", student_team: "",
         amount_grams: "", notes: "",
       });
@@ -187,7 +203,7 @@ export default function HarvestLog() {
                     id="h-date"
                     type="date"
                     value={form.harvest_date}
-                    max={new Date().toISOString().split("T")[0]}
+                    max={todayLocal()}
                     onChange={(e) => setForm({ ...form, harvest_date: e.target.value })}
                     className="w-full p-3 border border-gray-300 rounded-xl text-sm
                                shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700"
@@ -258,7 +274,8 @@ export default function HarvestLog() {
                   <input
                     id="h-grams"
                     type="number"
-                    min="0"
+                    min="0.1"
+                    max={MAX_GRAMS}
                     step="0.1"
                     placeholder="0"
                     value={form.amount_grams}
@@ -299,10 +316,13 @@ export default function HarvestLog() {
 
           {/* ── Entry list ─────────────────────────────────── */}
           {entries.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
-              <p className="text-4xl mb-3">🌾</p>
-              <p className="text-sm">No harvests logged yet.</p>
-              <p className="text-xs mt-1">Hit "+ Log Harvest" after your first pick.</p>
+            <div className="text-center py-16 text-gray-500 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+              <p className="text-4xl mb-3" aria-hidden="true">🌾</p>
+              <p className="text-sm font-semibold text-gray-700">No harvests logged yet - your first one is coming!</p>
+              <p className="text-xs mt-1">
+                When your class picks something, tap "+ Log Harvest" to record it.
+                Weighing each harvest makes a great data activity for students.
+              </p>
             </div>
           ) : (
             <div className="space-y-3 pb-24">
@@ -378,7 +398,7 @@ function StatCard({ label, value, icon, small }) {
       <p className={`font-bold text-teal-700 mt-1 ${small ? "text-sm leading-tight" : "text-xl lg:text-2xl"}`}>
         {value}
       </p>
-      <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mt-0.5">
+      <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mt-0.5">
         {label}
       </p>
     </div>
