@@ -348,6 +348,7 @@ function GetStartedCard() {
     { to: "/maintenance", label: "Log your maintenance dates",     hint: "Enter when you last cleaned, dosed, and checked." },
     { to: "/plants",      label: "Browse the Plant Library",       hint: "See germination and harvest times." },
     { to: "/lessons",     label: "Try an investigation in Lesson Lab", hint: "Start from a ready-made template." },
+    { to: "/library",     label: "Find a lesson plan",             hint: "Slides, journals and guides for every grade." },
   ];
   return (
     <section

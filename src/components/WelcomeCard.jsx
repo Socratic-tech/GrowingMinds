@@ -66,6 +66,13 @@ export default function WelcomeCard() {
       cta: "Maintenance",
     },
     {
+      icon: "📘",
+      title: "Find a lesson plan",
+      body: "Ready-to-teach slides, student journals and teacher guides for K–12.",
+      action: () => navigate("/library"),
+      cta: "Lesson plans",
+    },
+    {
       icon: "🔬",
       title: "Try a Lesson Lab investigation",
       body: "Start from a template and make it your own.",

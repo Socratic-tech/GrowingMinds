@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import Curriculum from "../components/Curriculum";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthProvider";
@@ -48,6 +50,9 @@ export default function Library() {
   const [url, setUrl] = useState("");
   const [category, setCategory] = useState("Guide");
   const [submitting, setSubmitting] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "links" ? "links" : "curriculum";
+  const setTab = (t) => setParams(t === "links" ? { tab: "links" } : {}, { replace: true });
 
   async function loadResources() {
     try {
@@ -149,7 +154,7 @@ export default function Library() {
           </h1>
         </div>
 
-        {isAdmin && (
+        {isAdmin && tab === "links" && (
           <Button
             aria-label={showAdd ? "Cancel add resource form" : "Add new resource"}
             className="bg-teal-700 hover:bg-teal-800 text-white 
@@ -162,6 +167,25 @@ export default function Library() {
         )}
       </div>
 
+      {/* TABS */}
+      <div role="tablist" aria-label="Library sections" className="flex gap-1 bg-gray-100 rounded-2xl p-1">
+        {[["curriculum", "📘 Lesson plans"], ["links", `🔗 Shared links${resources.length ? ` (${resources.length})` : ""}`]].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`flex-1 text-sm font-semibold rounded-xl py-2.5 min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-600
+              ${tab === id ? "bg-white shadow text-teal-800" : "text-gray-600 hover:text-gray-800"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "curriculum" ? <Curriculum /> : (
+      <>
       {/* ADD RESOURCE FORM */}
       {showAdd && (
         <form
@@ -319,6 +343,8 @@ export default function Library() {
           );
         })}
       </div>
+      </>
+      )}
     </div>
   );
 }
