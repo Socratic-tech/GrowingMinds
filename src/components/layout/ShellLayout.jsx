@@ -5,6 +5,7 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import Notifications from "../Notifications";
 import { getNavItems, isNavActive } from "../../config/navItems";
 import WelcomeCard from "../WelcomeCard";
+import ProfileNudge from "../ProfileNudge";
 import { initials } from "../../utils/displayName";
 
 export default function ShellLayout() {
@@ -90,6 +91,7 @@ export default function ShellLayout() {
           className={`flex-1 overflow-y-auto px-5 py-6 ${isMobile ? "mb-28" : "lg:py-10"}`}
         >
           <WelcomeCard />
+          <ProfileNudge />
           <Outlet />
         </main>
 

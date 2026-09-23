@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { displayName } from "../utils/displayName";
+import { missingProfileFields } from "../config/app";
 
 // Statewide rollout means hundreds of educators across many districts.
 // This panel is built to scan and approve them quickly without mistakes:
@@ -21,6 +22,8 @@ function looksLikeSchoolEmail(email = "") {
   return domain.endsWith(".org") || domain.endsWith(".edu") || domain.endsWith(".us") || domain.includes("k12");
 }
 
+const isIncomplete = (u) => missingProfileFields(u).length > 0;
+
 function csvEscape(v) {
   const s = v == null ? "" : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -35,6 +38,7 @@ export default function Admin() {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [query, setQuery] = useState("");
   const [remcFilter, setRemcFilter] = useState("");
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
   const reloadTimer = useRef(null);
 
   const loadUsers = useCallback(async () => {
@@ -153,7 +157,26 @@ export default function Admin() {
 
   // Oldest pending first: they've been waiting longest.
   const pending = filtered.filter((u) => !u.is_approved && u.role !== "admin").reverse();
-  const approved = filtered.filter((u) => u.is_approved || u.role === "admin");
+  const allApproved = filtered.filter((u) => u.is_approved || u.role === "admin");
+  const approvedIncomplete = allApproved.filter(isIncomplete);
+  const approved = incompleteOnly ? approvedIncomplete : allApproved;
+  const totalIncomplete = users.filter((u) => (u.is_approved || u.role === "admin") && isIncomplete(u)).length;
+
+  async function copyIncompleteEmails() {
+    const emails = approvedIncomplete.filter((u) => u.id !== profile.id).map((u) => u.email).filter(Boolean);
+    if (emails.length === 0) return;
+    const text = emails.join(", ");
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast({
+        title: `Copied ${emails.length} email${emails.length === 1 ? "" : "s"}`,
+        description: "Paste into the BCC line of a reminder email.",
+        type: "success",
+      });
+    } catch {
+      window.prompt("Copy these addresses (Ctrl/Cmd+C):", text);
+    }
+  }
   const totalPending = users.filter((u) => !u.is_approved && u.role !== "admin").length;
   const filtering = query.trim() || remcFilter;
 
@@ -166,7 +189,7 @@ export default function Admin() {
           <div>
             <h1 className="text-xl lg:text-3xl font-bold text-teal-800">Admin Panel</h1>
             <p className="text-xs text-gray-500">
-              {users.length} accounts · {totalPending} pending
+              {users.length} accounts · {totalPending} pending · {totalIncomplete} active with incomplete details
             </p>
           </div>
         </div>
@@ -231,7 +254,7 @@ export default function Admin() {
 
           {pending.map((u) => {
             const busy = busyIds.has(u.id);
-            const incomplete = !u.full_name || !u.school || !u.district;
+            const incomplete = isIncomplete(u);
             return (
               <div
                 key={u.id}
@@ -275,9 +298,34 @@ export default function Admin() {
       {/* ACTIVE */}
       {!loading && (
         <section aria-labelledby="active-title" className="space-y-3">
-          <h2 id="active-title" className="text-xs lg:text-sm uppercase tracking-widest font-bold text-teal-700">
-            ✔ Active educators ({approved.length})
-          </h2>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 id="active-title" className="text-xs lg:text-sm uppercase tracking-widest font-bold text-teal-700">
+              ✔ Active educators ({approved.length}{incompleteOnly ? ` of ${allApproved.length}` : ""})
+            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                aria-pressed={incompleteOnly}
+                onClick={() => setIncompleteOnly((v) => !v)}
+                className={`text-xs font-semibold rounded-xl px-3 py-2 border focus-visible:ring-2 focus-visible:ring-teal-600
+                  ${incompleteOnly ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+              >
+                Incomplete details ({approvedIncomplete.length})
+              </button>
+              {incompleteOnly && approvedIncomplete.length > 0 && (
+                <button
+                  type="button"
+                  onClick={copyIncompleteEmails}
+                  className="text-xs font-semibold text-teal-800 bg-white border border-teal-200 rounded-xl px-3 py-2 hover:bg-teal-50 focus-visible:ring-2 focus-visible:ring-teal-600"
+                >
+                  📋 Copy emails
+                </button>
+              )}
+            </div>
+          </div>
+          {incompleteOnly && approved.length === 0 && (
+            <p className="text-sm text-gray-500 italic pl-1">Everyone shown has filled in their name, school and district. 🎉</p>
+          )}
           {approved.map((u) => {
             const isSelf = u.id === profile.id;
             const isAdminRow = u.role === "admin";
@@ -293,6 +341,13 @@ export default function Admin() {
                     {displayName(u)}
                     {isAdminRow && <span className="ml-2 text-[11px] uppercase font-bold text-teal-700">admin</span>}
                   </p>
+                  {isIncomplete(u) && (
+                    <p className="mt-0.5">
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-[11px] font-semibold">
+                        missing {missingProfileFields(u).map((f) => f.label.toLowerCase()).join(", ")}
+                      </span>
+                    </p>
+                  )}
                   <p className="text-xs text-gray-600 truncate">
                     {[u.school, u.district, u.remc].filter(Boolean).join(" · ") || u.email}
                   </p>

@@ -13,6 +13,11 @@ function locallyDismissed(id) {
   try { return localStorage.getItem(LOCAL_KEY(id)) === "1"; } catch { return false; }
 }
 
+// True once the educator has closed the welcome card (on any device).
+export function welcomeDismissed(profile, userId) {
+  return Boolean(profile?.onboarding_dismissed_at) || locallyDismissed(userId);
+}
+
 // Shown at the top of every page until a newly approved educator dismisses
 // it. Walks them through the first things to do. Dismissal is saved on the
 // profile (so it follows them across devices) with a localStorage fallback
