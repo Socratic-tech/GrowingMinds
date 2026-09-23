@@ -4,11 +4,12 @@ import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
 import { todayLocal, toLocalISODate, parseLocalDate, addDays, daysBetween, formatLocalDate } from "../utils/date";
+import { GARDYN_MODEL, GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, SLOT_COUNT, isValidSlotId } from "../config/gardyn";
 
-/* ─── Slot layout: 3 columns × 10 rows (A–C, 1–10) ─────── */
-const COLUMNS = ["A", "B", "C"];
-const ROWS    = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const ALL_SLOT_IDS = COLUMNS.flatMap((col) => ROWS.map((row) => `${col}${row}`));
+/* ─── Slot layout: see src/config/gardyn.js ─────────────── */
+const COLUMNS = GARDYN_COLUMNS;
+const ROWS    = GARDYN_ROWS;
+const ALL_SLOT_IDS = SLOT_IDS;
 
 const SLOT_LIGHT_ZONE = {
   A1: "Med Sun",
@@ -96,6 +97,8 @@ function rowRichness(r) {
 function dedupeSlots(rows) {
   const bySlot = {};
   for (const r of rows) {
+    // Ignore leftover rows from the old 30-slot layout (C1–C10, A9, …).
+    if (!isValidSlotId(r.slot_id)) continue;
     const prev = bySlot[r.slot_id];
     if (
       !prev ||
@@ -250,7 +253,7 @@ export default function Tracker() {
               Slot Tracker
             </h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              30 slots · Gardyn yCube (A–C × 1–10)
+              {SLOT_COUNT} slots · {GARDYN_MODEL} (A–B × 1–8)
             </p>
           </div>
         </div>
@@ -320,7 +323,7 @@ export default function Tracker() {
                   <h2 className="text-xs uppercase tracking-widest font-bold text-gray-500 mb-2">
                     Column {col}
                   </h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {ROWS.map((row) => {
                       const id    = `${col}${row}`;
                       const slot  = slots[id];
@@ -701,10 +704,10 @@ function TrackerSkeleton() {
       <div className="flex gap-2">
         {[1,2,3,4,5].map((i) => <Skeleton key={i} className="h-7 w-24 rounded-full" />)}
       </div>
-      {["A","B","C"].map((col) => (
+      {COLUMNS.map((col) => (
         <div key={col} className="space-y-2">
           <Skeleton className="h-4 w-16 rounded" />
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {ROWS.map((r) => <Skeleton key={r} className="h-20 rounded-2xl" />)}
           </div>
         </div>

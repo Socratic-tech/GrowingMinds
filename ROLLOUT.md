@@ -66,7 +66,7 @@ Then, in an **incognito window**, run through the new-teacher path with a test e
 - [ ] Sign up with name, school and district. You should see the "Confirm your email" screen, and the email should arrive.
 - [ ] Confirm the email and sign in. The Pending page should show "Submitted as …".
 - [ ] As admin, the test account appears under Pending with its details. Approve it, and the incognito tab moves into the app on its own.
-- [ ] The Welcome card appears. The tracker creates 30 slots. Log a maintenance date after 8pm and check it records *today's* date.
+- [ ] The Welcome card appears. The tracker creates 16 slots (A1–A8, B1–B8). Log a maintenance date after 8pm and check it records *today's* date.
 - [ ] Post, comment, then delete your own post. Ask a question, and the admin account gets a notification that shows the name.
 - [ ] On a phone: you can reach Profile and Sign out from the avatar in the header, and the tracker's edit sheet opens on screen.
 - [ ] Merge `rollout-statewide` into `main` and push.

@@ -6,6 +6,7 @@ import { useToast } from "../components/ui/toast";
 import { Skeleton } from "../components/ui/Skeleton";
 import { getStatus as getMaintenanceStatus } from "./Maintenance";
 import { formatLocalDate } from "../utils/date";
+import { isValidSlotId } from "../config/gardyn";
 
 const MAINT_LABEL = {
   "overdue":    "Overdue",
@@ -69,7 +70,7 @@ export default function GardynDashboard() {
     }
 
     setData({
-      slots:       slotRes.data    || [],
+      slots:       (slotRes.data || []).filter((s) => isValidSlotId(s.slot_id)),
       maintenance: maintRes.data   || [],
       harvests:    harvestRes.data || [],
       allWeights:  weightRes.data  || [],

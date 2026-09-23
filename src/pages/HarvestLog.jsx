@@ -4,12 +4,10 @@ import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
 import { todayLocal, isValidDateString, formatLocalDate } from "../utils/date";
+import { SLOT_IDS } from "../config/gardyn";
 
 const MAX_GRAMS = 10000;
 
-const SLOT_IDS = ["A","B","C"].flatMap((c) =>
-  [1,2,3,4,5,6,7,8,9,10].map((r) => `${c}${r}`)
-);
 
 function formatDate(iso) {
   if (!iso) return "—";

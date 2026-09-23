@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthProvider";
 import ProfileDetailsForm from "./ProfileDetailsForm";
 import { SUPPORT_CONTACT, missingProfileFields } from "../config/app";
 import { displayName } from "../utils/displayName";
+import { SLOT_COUNT } from "../config/gardyn";
 
 const LOCAL_KEY = (id) => `gm-welcome-dismissed-${id}`;
 
@@ -48,7 +49,7 @@ export default function WelcomeCard() {
     {
       icon: "🌿",
       title: "Set up your Gardyn tracker",
-      body: "Record what's planted in each of your 30 slots and when.",
+      body: `Record what's planted in each of your ${SLOT_COUNT} slots and when.`,
       action: () => navigate("/tracker"),
       cta: "Open tracker",
     },
