@@ -10,14 +10,21 @@ const ZONE_META = {
   "Red (High)":    { label: "Red · High",    dot: "bg-red-400",    text: "text-red-800",    bg: "bg-red-50   border-red-200"    },
 };
 
+// Categories match the Gardyn store (supabase_plants_gardyn_2026-09.sql).
+// Old names are kept in the icon map in case a row wasn't migrated.
 const CATEGORY_ICONS = {
-  Greens:   "🥬",
+  Greens:             "🥬",
+  Herbs:              "🌿",
+  "Fruits & Veggies": "🍅",
+  Flowers:            "🌸",
   Herb:     "🌿",
   Fruiting: "🍅",
   Flower:   "🌸",
 };
 
-const CATEGORIES = ["All", "Greens", "Herb", "Fruiting", "Flower"];
+const CATEGORIES = ["All", "Greens", "Herbs", "Fruits & Veggies", "Flowers"];
+
+const gardynUrl = (handle) => `https://mygardyn.com/products/${encodeURIComponent(handle)}`;
 const ZONES      = ["All", "Yellow (Low)", "Orange (Med)", "Red (High)"];
 
 export default function PlantLibrary() {
@@ -277,6 +284,20 @@ function PlantCard({ plant, isExpanded, onToggle }) {
                   {zoneMeta.label}
                 </span>
               )}
+
+              {plant.care_level && (
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-50 text-gray-600
+                                 border border-gray-200 px-2 py-0.5 rounded-full">
+                  {plant.care_level}
+                </span>
+              )}
+
+              {plant.in_gardyn_store === false && (
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500
+                                 border border-gray-200 px-2 py-0.5 rounded-full">
+                  Not in Gardyn store
+                </span>
+              )}
             </div>
           </div>
 
@@ -287,9 +308,13 @@ function PlantCard({ plant, isExpanded, onToggle }) {
                 <span className="font-semibold text-gray-600">{plant.germination_days}d</span> germ.
               </p>
             )}
-            {plant.harvest_days != null && (
+            {plant.harvest_days != null ? (
               <p className="text-[10px] text-gray-500">
                 <span className="font-semibold text-teal-600">{plant.harvest_days}d</span> harvest
+              </p>
+            ) : plant.first_harvest && (
+              <p className="text-[10px] text-gray-500">
+                <span className="font-semibold text-teal-600">{plant.first_harvest}</span>
               </p>
             )}
           </div>
@@ -333,6 +358,12 @@ function PlantCard({ plant, isExpanded, onToggle }) {
             </div>
           )}
 
+          {plant.perfect_for && (
+            <p className="text-xs lg:text-sm text-gray-700">
+              <span className="font-semibold text-gray-800">Perfect for:</span> {plant.perfect_for}
+            </p>
+          )}
+
           {/* Timing details */}
           <div className="grid grid-cols-3 gap-2 pt-1">
             {plant.germination_days != null && (
@@ -344,14 +375,32 @@ function PlantCard({ plant, isExpanded, onToggle }) {
             {plant.harvest_days != null && (
               <StatPill label="1st Harvest" value={`${plant.harvest_days}d`} />
             )}
+            {plant.first_harvest && (
+              <StatPill label="Gardyn says" value={plant.first_harvest} />
+            )}
+            {plant.care_level && <StatPill label="Care" value={plant.care_level} />}
+            {plant.yield && <StatPill label="Yield" value={plant.yield} />}
           </div>
 
           {/* Price */}
-          {plant.price && (
-            <p className="text-[10px] text-gray-500 pt-1">
-              Gardyn yCube: <span className="font-semibold text-gray-600">{plant.price}</span>
-            </p>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            {plant.price && (
+              <p className="text-[10px] text-gray-500">
+                Gardyn yCube: <span className="font-semibold text-gray-600">{plant.price}</span>
+                {plant.member_price && <> · members {plant.member_price}</>}
+              </p>
+            )}
+            {plant.gardyn_handle && (
+              <a
+                href={gardynUrl(plant.gardyn_handle)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-semibold text-teal-700 underline hover:text-teal-900"
+              >
+                Care &amp; harvest tips on mygardyn.com
+              </a>
+            )}
+          </div>
         </div>
       )}
     </div>
