@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
+import AdminPlants from "../components/admin/AdminPlants";
+import AdminProblems from "../components/admin/AdminProblems";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
@@ -39,6 +41,10 @@ export default function Admin() {
   const [query, setQuery] = useState("");
   const [remcFilter, setRemcFilter] = useState("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const tab = ["plants", "problems"].includes(params.get("tab")) ? params.get("tab") : "educators";
+  const setTab = (t) => setParams(t === "educators" ? {} : { tab: t }, { replace: true });
+  const [problemCount, setProblemCount] = useState(0);
   const reloadTimer = useRef(null);
 
   const loadUsers = useCallback(async () => {
@@ -59,6 +65,16 @@ export default function Admin() {
   useEffect(() => {
     if (!authLoading && profile?.role === "admin") loadUsers();
   }, [authLoading, profile?.role, loadUsers]);
+
+  // Badge on the Problems tab (quietly 0 until the problems log exists).
+  useEffect(() => {
+    if (authLoading || profile?.role !== "admin") return;
+    supabase
+      .from("client_errors")
+      .select("id", { count: "exact", head: true })
+      .eq("resolved", false)
+      .then(({ count, error }) => { if (!error) setProblemCount(count || 0); });
+  }, [authLoading, profile?.role]);
 
   // Keep the pending list live as new educators sign up.
   useEffect(() => {
@@ -193,16 +209,46 @@ export default function Admin() {
             </p>
           </div>
         </div>
-        <button
+        {tab === "educators" && <button
           type="button"
           onClick={exportCsv}
           disabled={!users.length}
           className="text-xs font-semibold text-teal-800 bg-white border border-teal-200 rounded-xl px-3 py-2 hover:bg-teal-50 disabled:opacity-50"
         >
           ⬇ Export CSV
-        </button>
+        </button>}
       </div>
 
+      {/* TABS */}
+      <div role="tablist" aria-label="Admin sections" className="flex gap-1 bg-gray-100 rounded-2xl p-1">
+        {[
+          ["educators", "👩‍🏫 Educators", totalPending],
+          ["plants", "🌱 Plants", 0],
+          ["problems", "⚠️ Problems", problemCount],
+        ].map(([id, label, n]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`flex-1 text-sm font-semibold rounded-xl py-2.5 min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-600
+              ${tab === id ? "bg-white shadow text-teal-800" : "text-gray-600 hover:text-gray-800"}`}
+          >
+            {label}
+            {n > 0 && (
+              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold ${id === "problems" ? "bg-red-600 text-white" : "bg-amber-500 text-white"}`}>
+                {n}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "plants" && <AdminPlants />}
+      {tab === "problems" && <AdminProblems users={users} onCountChange={setProblemCount} />}
+
+      {tab === "educators" && (<>
       {/* SEARCH + FILTER */}
       <div className="flex flex-col sm:flex-row gap-2">
         <label htmlFor="admin-search" className="sr-only">Search educators</label>
@@ -369,6 +415,7 @@ export default function Admin() {
           })}
         </section>
       )}
+      </>)}
     </div>
   );
 }

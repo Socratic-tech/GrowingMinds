@@ -9,6 +9,9 @@ import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthProvider.jsx";
 import { ToastProvider } from "./components/ui/toast.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { installGlobalErrorReporting } from "./utils/reportError";
+
+installGlobalErrorReporting();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
