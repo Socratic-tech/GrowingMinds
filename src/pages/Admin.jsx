@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import AdminPlants from "../components/admin/AdminPlants";
 import AdminProblems from "../components/admin/AdminProblems";
+import AdminEventCodes from "../components/admin/AdminEventCodes";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
@@ -42,7 +43,7 @@ export default function Admin() {
   const [remcFilter, setRemcFilter] = useState("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [params, setParams] = useSearchParams();
-  const tab = ["plants", "problems"].includes(params.get("tab")) ? params.get("tab") : "educators";
+  const tab = ["plants", "codes", "problems"].includes(params.get("tab")) ? params.get("tab") : "educators";
   const setTab = (t) => setParams(t === "educators" ? {} : { tab: t }, { replace: true });
   const [problemCount, setProblemCount] = useState(0);
   const reloadTimer = useRef(null);
@@ -224,6 +225,7 @@ export default function Admin() {
         {[
           ["educators", "👩‍🏫 Educators", totalPending],
           ["plants", "🌱 Plants", 0],
+          ["codes", "🎟️ Codes", 0],
           ["problems", "⚠️ Problems", problemCount],
         ].map(([id, label, n]) => (
           <button
@@ -232,7 +234,7 @@ export default function Admin() {
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`flex-1 text-sm font-semibold rounded-xl py-2.5 min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-600
+            className={`flex-1 px-1 text-xs sm:text-sm font-semibold rounded-xl py-2.5 min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-600
               ${tab === id ? "bg-white shadow text-teal-800" : "text-gray-600 hover:text-gray-800"}`}
           >
             {label}
@@ -246,6 +248,7 @@ export default function Admin() {
       </div>
 
       {tab === "plants" && <AdminPlants />}
+      {tab === "codes" && <AdminEventCodes users={users} />}
       {tab === "problems" && <AdminProblems users={users} onCountChange={setProblemCount} />}
 
       {tab === "educators" && (<>

@@ -5,10 +5,27 @@ import { useAuth } from "../context/AuthProvider";
 import ProfileDetailsForm from "../components/ProfileDetailsForm";
 import { SUPPORT_CONTACT, missingProfileFields } from "../config/app";
 import { displayName, affiliation } from "../utils/displayName";
+import { redeemEventCode, EVENT_CODE_MESSAGES } from "../utils/eventCode";
 
 export default function Pending() {
   const { user, profile, loading, refreshProfile } = useAuth();
   const [editing, setEditing] = useState(false);
+  const [code, setCode] = useState("");
+  const [codeMsg, setCodeMsg] = useState(null);
+  const [redeeming, setRedeeming] = useState(false);
+
+  async function submitCode(e) {
+    e.preventDefault();
+    if (!code.trim() || redeeming) return;
+    setRedeeming(true);
+    const result = await redeemEventCode(code);
+    setRedeeming(false);
+    setCodeMsg({
+      ok: result === "approved" || result === "already",
+      text: EVENT_CODE_MESSAGES[result] || "Something went wrong. Try again, or ask your facilitator.",
+    });
+    if (result === "approved" || result === "already") refreshProfile?.();
+  }
 
   // Live-watch this user's own profile row. The moment an admin flips
   // is_approved to true, refresh the in-memory profile so the redirect
@@ -112,6 +129,34 @@ export default function Pending() {
                 Edit details
               </button>
             </div>
+
+            <form onSubmit={submitCode} className="bg-white/10 border border-white/20 rounded-2xl p-4 text-left space-y-2" aria-label="Event code">
+              <label htmlFor="pending-code" className="block text-xs uppercase tracking-wide text-teal-200 font-semibold">
+                At a training? Enter the event code
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="pending-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="e.g. GROW2026"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  maxLength={32}
+                  className="flex-1 min-w-0 p-3 rounded-xl bg-white/95 text-gray-800 text-sm uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-white"
+                />
+                <button
+                  type="submit"
+                  disabled={redeeming || !code.trim()}
+                  className="px-4 rounded-xl bg-white text-teal-800 font-semibold text-sm disabled:opacity-60"
+                >
+                  {redeeming ? "…" : "Join"}
+                </button>
+              </div>
+              {codeMsg && (
+                <p role="status" className={`text-sm ${codeMsg.ok ? "text-emerald-200" : "text-amber-200"}`}>{codeMsg.text}</p>
+              )}
+            </form>
 
             <p className="text-xs text-teal-100">
               Waiting more than a school day? Email{" "}

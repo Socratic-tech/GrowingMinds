@@ -25,6 +25,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [details, setDetails] = useState(() => Object.fromEntries(PROFILE_FIELDS.map((f) => [f.key, ""])));
+  const [eventCode, setEventCode] = useState("");
   const [loading, setLoading] = useState(false);
 
   const isSignup = mode === "signup";
@@ -56,9 +57,13 @@ export default function AuthPage() {
             emailRedirectTo: REDIRECT_URL,
             // Stored on the auth user; AuthProvider copies these onto the
             // profile row on first sign-in so admins can see who this is.
-            data: Object.fromEntries(
-              PROFILE_FIELDS.map((f) => [f.key, details[f.key].trim().slice(0, f.max)])
-            ),
+            data: {
+              ...Object.fromEntries(
+                PROFILE_FIELDS.map((f) => [f.key, details[f.key].trim().slice(0, f.max)])
+              ),
+              // Redeemed on first sign-in (AuthProvider) to skip the wait.
+              ...(eventCode.trim() ? { event_code: eventCode.trim().toUpperCase().replace(/\s+/g, "").slice(0, 32) } : {}),
+            },
           },
         })
       : await supabase.auth.signInWithPassword({ email: cleanEmail, password });
@@ -201,6 +206,21 @@ export default function AuthPage() {
                       />
                     </div>
                   ))}
+                  <div>
+                    <label htmlFor="su-event-code" className="block text-xs font-semibold text-gray-600 mb-1">
+                      Event code <span className="font-normal text-gray-500">(optional, if you're at a training)</span>
+                    </label>
+                    <input
+                      id="su-event-code"
+                      className="w-full p-3 border border-gray-300 rounded-xl shadow-inner text-sm uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-teal-700"
+                      placeholder="e.g. GROW2026"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      maxLength={32}
+                      value={eventCode}
+                      onChange={(e) => setEventCode(e.target.value)}
+                    />
+                  </div>
                 </fieldset>
               )}
 

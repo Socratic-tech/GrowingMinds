@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "../supabase/client";
+import { redeemEventCode } from "../utils/eventCode";
 
 const AuthContext = createContext();
 
@@ -44,6 +45,18 @@ async function syncSignupDetails(authUser, profileRow, setProfile) {
     return;
   }
   setProfile?.((p) => (p && p.id === authUser.id ? { ...p, ...update } : p));
+}
+
+// An event code typed at sign-up is redeemed once, on the first sign-in
+// after the account exists (email confirmation may sit in between).
+const codeTried = new Set();
+async function redeemSignupCode(authUser, profileRow, reload) {
+  const code = authUser.user_metadata?.event_code;
+  if (!code || profileRow.is_approved || profileRow.role === "admin" || codeTried.has(authUser.id)) return;
+  codeTried.add(authUser.id);
+  const result = await redeemEventCode(code);
+  devLog("Event code at signup:", result);
+  if (result === "approved") reload?.();
 }
 
 export function AuthProvider({ children }) {
@@ -116,7 +129,10 @@ export function AuthProvider({ children }) {
           setUser(authUser);
           setProfile(data || minimalProfile); // Use real data, or fail-closed fallback
           devLog("✅ Profile loaded successfully");
-          if (data) syncSignupDetails(authUser, data, setProfile);
+          if (data) {
+            syncSignupDetails(authUser, data, setProfile);
+            redeemSignupCode(authUser, data, () => loadProfile(authUser, true));
+          }
         }
       } catch (e) {
         console.error("Profile fetch exception:", e?.message || e);
