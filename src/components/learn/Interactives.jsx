@@ -339,3 +339,46 @@ export function HarvestPlant({ onComplete }) {
     </div>
   );
 }
+
+/* ─── pH slider ─────────────────────────────────────────── */
+function phReading(v) {
+  if (v < 4.5) return { tone: "bad", text: "Very acidic. Roots can be damaged, and the plant can't use its food well." };
+  if (v < 5.5) return { tone: "warn", text: "A bit too acidic. Some nutrients start to become harder to absorb." };
+  if (v <= 6.5) return { tone: "good", text: "The plant-ready zone! Roots can absorb the widest range of nutrients here." };
+  if (v <= 7.5) return { tone: "warn", text: "Around neutral, like a lot of tap water. Nutrients such as iron get harder to absorb." };
+  return { tone: "bad", text: "Too basic. Several nutrients get locked up, and leaves can turn pale or yellow." };
+}
+const PH_TONE = {
+  good: "bg-emerald-50 text-emerald-900 border-emerald-300",
+  warn: "bg-amber-50 text-amber-900 border-amber-300",
+  bad: "bg-red-50 text-red-900 border-red-300",
+};
+
+export function PhSlider({ onComplete }) {
+  const [v, setV] = useState(7.5);
+  const r = phReading(v);
+  useEffect(() => { if (r.tone === "good") onComplete?.(); }, [r.tone, onComplete]);
+  return (
+    <div className="space-y-4">
+      <div className="relative pt-8">
+        <p className="absolute top-0 text-[11px] font-bold text-emerald-800 whitespace-nowrap -translate-x-1/2"
+           style={{ left: `${((6 - 3) / 6) * 100}%` }} aria-hidden="true">Plant-ready 5.5–6.5</p>
+        <div className="absolute h-8 rounded-md border-[3px] border-emerald-800"
+             style={{ top: "26px", left: `${((5.5 - 3) / 6) * 100}%`, width: `${(1 / 6) * 100}%` }} aria-hidden="true" />
+        <div className="h-4 rounded-full" aria-hidden="true"
+             style={{ background: "linear-gradient(90deg,#D6457A,#B24C9A 35%,#7B4FA0 58%,#4A74B8 72%,#3E9A5A 88%,#D9B92E)" }} />
+        <label htmlFor="ph-slider" className="sr-only">pH value</label>
+        <input id="ph-slider" type="range" min={3} max={9} step={0.5} value={v}
+               onChange={(e) => setV(Number(e.target.value))}
+               className="w-full mt-2 accent-teal-700" aria-valuetext={`pH ${v}`} />
+        <div className="flex justify-between text-xs font-semibold text-gray-600" aria-hidden="true">
+          {[3, 4, 5, 6, 7, 8, 9].map((n) => <span key={n}>{n}</span>)}
+        </div>
+      </div>
+      <div role="status" className={`border-2 rounded-2xl px-4 py-3 ${PH_TONE[r.tone]}`}>
+        <p className="text-2xl font-bold">pH {v.toFixed(1)}</p>
+        <p className="text-sm font-semibold">{r.text}</p>
+      </div>
+    </div>
+  );
+}

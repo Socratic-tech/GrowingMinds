@@ -10,9 +10,25 @@
 // Care facts follow the Gardyn Help Center (linked in each guide's
 // `sources`). Have the Growing Minds team check wording before changes.
 
+export const LEVELS = [
+  { id: "beginner", label: "Beginner", icon: "🌱", blurb: "Your first two weeks: getting plants in and sprouting." },
+  { id: "intermediate", label: "Intermediate", icon: "🌿", blurb: "Weekly care and your first harvests." },
+  { id: "advanced", label: "Advanced", icon: "🌳", blurb: "The science behind the tower, for you and your students." },
+];
+
+// Planned guides, shown greyed out so teachers can see what's coming.
+export const COMING_SOON = [
+  { level: "beginner", title: "Unbox & assemble your Studio", icon: "📦" },
+  { level: "beginner", title: "Connect Kelby & activate", icon: "📱" },
+  { level: "intermediate", title: "Root checks & trimming", icon: "🪴" },
+  { level: "advanced", title: "Troubleshooting: what are you seeing?", icon: "🔎" },
+  { level: "advanced", title: "Run a student experiment", icon: "🧪" },
+];
+
 export const TUTORIALS = [
   {
     id: "place-ycubes",
+    level: "beginner",
     title: "Place your yCubes",
     blurb: "Match each plant to the right amount of light, then save your plan to the Tracker.",
     icon: "🌿",
@@ -74,6 +90,7 @@ export const TUTORIALS = [
   },
   {
     id: "thinning",
+    level: "beginner",
     title: "Sprouts & thinning",
     blurb: "Know when to thin, how many sprouts to keep, and how to do it without hurting the one you keep.",
     icon: "✂️",
@@ -150,6 +167,7 @@ export const TUTORIALS = [
   },
   {
     id: "harvest",
+    level: "intermediate",
     title: "Harvest so it grows back",
     blurb: "Take the right leaves, leave enough behind, and your plants keep producing for weeks.",
     icon: "🥬",
@@ -196,6 +214,124 @@ export const TUTORIALS = [
         body: [
           "Regular harvests keep big plants from shading their neighbors, so every pod gets the light it needs.",
           "Harvest day is also a good time to check the roots.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "water-care",
+    level: "intermediate",
+    title: "Weekly water care",
+    blurb: "Top off, feed, and refresh the tank on the right schedule, with the right amounts for a Studio.",
+    icon: "💧",
+    minutes: 4,
+    sources: [
+      { label: "Gardyn: Discovering Water Quality", url: "https://help.mygardyn.com/en/articles/1777281" },
+      { label: "Gardyn: How, Why, and When to Add HydroBoost", url: "https://help.mygardyn.com/en/articles/1788289" },
+    ],
+    steps: [
+      {
+        type: "info",
+        title: "Three things keep the water healthy",
+        body: [
+          "Plant food: the nutrients your plants eat. Always measure it and dissolve it fully before adding it to the tank.",
+          "HydroBoost: a plant-based water treatment that keeps algae, biofilm and mineral build-up down and helps balance the water.",
+          "Fresh water: the tank gets topped off every week and completely refreshed about once a month.",
+        ],
+        tip: "Start sprouts with water only. Kelby tells you when it's time for the first plant food.",
+      },
+      {
+        type: "quiz",
+        question: "How often do you top off the tank and add plant food?",
+        options: [
+          { text: "Every day", feedback: "That's more than it needs. Gardyn's schedule is a weekly top-off." },
+          { text: "Once a week", correct: true, feedback: "Right. Top off weekly with ½ teaspoon of plant food per gallon of water you add, plus HydroBoost." },
+          { text: "Once a month", feedback: "Monthly is for the full refresh. Top-offs and feeding happen weekly." },
+        ],
+      },
+      {
+        type: "quiz",
+        question: "On a Studio with regular tap water, how much HydroBoost goes in each week?",
+        options: [
+          { text: "½ teaspoon", feedback: "That's the Studio amount for filtered, RO or distilled water. Regular tap water needs more." },
+          { text: "1½ teaspoons", correct: true, feedback: "Right. Studio with standard water: 1½ tsp. Hard water: 3 tsp. Filtered water: ½ tsp." },
+          { text: "A full cap", feedback: "Measure it. For a Studio with standard water, it's 1½ teaspoons." },
+        ],
+      },
+      {
+        type: "quiz",
+        question: "You're growing four or more fruiting plants (tomatoes, peppers). What changes?",
+        options: [
+          { text: "Nothing, same schedule", feedback: "Big fruiting plants drink and eat a lot more, so the schedule speeds up." },
+          { text: "Refresh the tank every 14 days, and HydroBoost can go in as often as every 3 days", correct: true, feedback: "Right. Heavy feeders need fresher water more often." },
+        ],
+      },
+      {
+        type: "info",
+        title: "Safety for the classroom",
+        body: [
+          "Keep HydroBoost and plant food where students can't reach them. They're not for drinking.",
+          "Have one adult or a trained student team measure and add them, and log each top-off in the app's Maintenance page.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "ph-basics",
+    level: "advanced",
+    title: "The chemistry of your tank: pH",
+    blurb: "Why pH decides what roots can absorb, why Gardyn handles it for you, and how to explore it safely with students.",
+    icon: "🧪",
+    minutes: 5,
+    sources: [
+      { label: "Gardyn: Do I need to measure my water's pH?", url: "https://help.mygardyn.com/en/articles/1777153" },
+      { label: "Oklahoma State University Extension: EC and pH Guide for Hydroponics", url: "https://extension.okstate.edu/fact-sheets/electrical-conductivity-and-ph-guide-for-hydroponics" },
+    ],
+    steps: [
+      {
+        type: "info",
+        title: "pH controls what roots can absorb",
+        body: [
+          "pH measures how acidic or basic the water is, from 0 to 14. Seven is neutral.",
+          "The food can be right there in the water, but if the pH drifts too far, some nutrients become hard for roots to take up. Hydroponic water is usually kept slightly acidic, around 5.5 to 6.5.",
+        ],
+      },
+      {
+        type: "ph",
+        title: "Find the plant-ready zone",
+        body: "Drag the slider to see what a plant experiences at each pH. Land in the zone plants like best to continue.",
+      },
+      {
+        type: "quiz",
+        question: "Do you need to test your Gardyn's pH every week?",
+        options: [
+          { text: "Yes, or the plants will starve", feedback: "Not for a Gardyn. Its plant food and HydroBoost are made to keep the pH in range for you." },
+          { text: "No. Gardyn's plant food and HydroBoost keep it in range when you follow the schedule", correct: true, feedback: "Right. Testing is optional: it's great science, not a chore." },
+        ],
+      },
+      {
+        type: "quiz",
+        question: "Your class wants to test the tank water. How do you do it?",
+        options: [
+          { text: "Dip the pH strips and indicators straight into the reservoir", feedback: "Never experiment in the reservoir: whatever goes in reaches every plant." },
+          { text: "Scoop a sample into a cup and test the cup", correct: true, feedback: "Exactly. Test a sample, and pour it out afterward." },
+          { text: "Add vinegar to the tank to see what happens", feedback: "That changes the water for every plant in the tower. Experiment on samples only." },
+        ],
+      },
+      {
+        type: "quiz",
+        question: "pH is a log scale. How much more acidic is pH 5 than pH 6?",
+        options: [
+          { text: "A little: about 1 unit", feedback: "Each whole step on the pH scale is a factor of ten." },
+          { text: "10 times", correct: true, feedback: "Right. That's why a 'small' change in pH is a big chemical change: a great hook for older students." },
+          { text: "2 times", feedback: "Each whole pH step is ten times, not two." },
+        ],
+      },
+      {
+        type: "info",
+        title: "Take it to your class",
+        body: [
+          "The pH Puzzle (HS Chemistry) and Gardyn's Plant Pigment pH Indicator lesson turn this into a hands-on lab. Find both in Library → Lesson plans.",
         ],
       },
     ],

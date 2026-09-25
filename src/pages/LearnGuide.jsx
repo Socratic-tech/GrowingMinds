@@ -3,9 +3,9 @@ import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthProvider";
 import { TUTORIALS, tutorialById } from "../data/tutorials";
 import { loadProgress, saveProgress } from "../utils/learnProgress";
-import { LightMap, SlotPlacer, SproutPicker, HarvestPlant } from "../components/learn/Interactives";
+import { LightMap, SlotPlacer, SproutPicker, HarvestPlant, PhSlider } from "../components/learn/Interactives";
 
-const INTERACTIVE = { placer: SlotPlacer, sprout: SproutPicker, harvest: HarvestPlant };
+const INTERACTIVE = { placer: SlotPlacer, sprout: SproutPicker, harvest: HarvestPlant, ph: PhSlider };
 
 export default function LearnGuide() {
   const { id } = useParams();
