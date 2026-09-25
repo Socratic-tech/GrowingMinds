@@ -6,9 +6,13 @@
 //   placer    – plan your 16 slots against the light map (saves to Tracker)
 //   sprout    – pick the sprout to keep in a pod
 //   harvest   – harvest a lettuce without taking too much
+//   ph        – find the plant-ready pH zone
+// More guides and step types live in tutorialsMore.js.
 //
 // Care facts follow the Gardyn Help Center (linked in each guide's
 // `sources`). Have the Growing Minds team check wording before changes.
+
+import { MORE_GUIDES } from "./tutorialsMore";
 
 export const LEVELS = [
   { id: "beginner", label: "Beginner", icon: "🌱", blurb: "Your first two weeks: getting plants in and sprouting." },
@@ -17,15 +21,9 @@ export const LEVELS = [
 ];
 
 // Planned guides, shown greyed out so teachers can see what's coming.
-export const COMING_SOON = [
-  { level: "beginner", title: "Unbox & assemble your Studio", icon: "📦" },
-  { level: "beginner", title: "Connect Kelby & activate", icon: "📱" },
-  { level: "intermediate", title: "Root checks & trimming", icon: "🪴" },
-  { level: "advanced", title: "Troubleshooting: what are you seeing?", icon: "🔎" },
-  { level: "advanced", title: "Run a student experiment", icon: "🧪" },
-];
+export const COMING_SOON = [];
 
-export const TUTORIALS = [
+const CORE_GUIDES = [
   {
     id: "place-ycubes",
     level: "beginner",
@@ -336,6 +334,18 @@ export const TUTORIALS = [
       },
     ],
   },
+];
+
+// Display order (also sets "Next guide" on the finish screen).
+const ORDER = [
+  "setup", "connect", "place-ycubes", "thinning",        // beginner
+  "water-care", "harvest", "roots",                      // intermediate
+  "troubleshoot", "ph-basics", "experiment",             // advanced
+];
+const ALL = [...CORE_GUIDES, ...MORE_GUIDES];
+export const TUTORIALS = [
+  ...ORDER.map((id) => ALL.find((g) => g.id === id)).filter(Boolean),
+  ...ALL.filter((g) => !ORDER.includes(g.id)),
 ];
 
 export const tutorialById = (id) => TUTORIALS.find((t) => t.id === id);

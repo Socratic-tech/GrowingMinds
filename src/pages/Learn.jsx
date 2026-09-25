@@ -26,6 +26,24 @@ export default function Learn() {
         </div>
       </div>
 
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Link to="/learn/cards"
+          className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4 hover:border-amber-400 focus-visible:ring-2 focus-visible:ring-teal-700">
+          <span aria-hidden="true" className="text-2xl">🖨️</span>
+          <span>
+            <span className="block font-bold text-gray-900 text-sm">Student job cards</span>
+            <span className="block text-xs text-gray-700">Printable task cards for tower teams, in kid-friendly words.</span>
+          </span>
+        </Link>
+        <div className="flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-2xl p-4">
+          <span aria-hidden="true" className="text-2xl">📽️</span>
+          <span>
+            <span className="block font-bold text-gray-900 text-sm">Teaching it to your class?</span>
+            <span className="block text-xs text-gray-700">Open any guide and tap <b>Present to class</b>. Many guides also have <b>Kid words</b> for K–5.</span>
+          </span>
+        </div>
+      </div>
+
       {LEVELS.map((lvl) => {
         const guides = TUTORIALS.filter((t) => t.level === lvl.id);
         const soon = COMING_SOON.filter((c) => c.level === lvl.id);

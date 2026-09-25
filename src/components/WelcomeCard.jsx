@@ -61,7 +61,7 @@ export default function WelcomeCard() {
     {
       icon: "🎓",
       title: "Learn the basics",
-      body: "Hands-on guides: placing yCubes, thinning sprouts and harvesting so plants grow back.",
+      body: "Hands-on guides from unboxing your Studio to thinning, harvesting and troubleshooting.",
       action: () => navigate("/learn"),
       cta: "Learn",
     },

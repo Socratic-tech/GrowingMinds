@@ -21,6 +21,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import Learn from "./pages/Learn";
 import LearnGuide from "./pages/LearnGuide";
+import JobCards from "./pages/JobCards";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="lessons" element={<LessonLab />} />
         <Route path="gardyn" element={<GardynDashboard />} />
         <Route path="learn" element={<Learn />} />
+        <Route path="learn/cards" element={<JobCards />} />
         <Route path="learn/:id" element={<LearnGuide />} />
         <Route path="qa" element={<QA />} />
         <Route path="profile/:userId" element={<Profile />} />

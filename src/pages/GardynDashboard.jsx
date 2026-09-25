@@ -7,6 +7,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { getStatus as getMaintenanceStatus } from "./Maintenance";
 import { formatLocalDate } from "../utils/date";
 import { isValidSlotId } from "../config/gardyn";
+import CoachCards from "../components/learn/CoachCards";
 
 const MAINT_LABEL = {
   "overdue":    "Overdue",
@@ -151,6 +152,8 @@ export default function GardynDashboard() {
       ) : (
         <>
           {isNewTeacher && <GetStartedCard />}
+
+          {!isNewTeacher && <CoachCards userId={user.id} slots={slots} maintenance={data.maintenance} />}
 
           {/* ── Stat grid ──────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
