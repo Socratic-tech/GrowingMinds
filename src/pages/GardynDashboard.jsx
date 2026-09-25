@@ -314,8 +314,9 @@ export default function GardynDashboard() {
             <h2 className="text-xs uppercase tracking-widest font-bold text-gray-500 mb-2">
               Quick Links
             </h2>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {[
+                { icon: "🎓", label: "Learn",   path: "/learn"       },
                 { icon: "🌱", label: "Plants",  path: "/plants"      },
                 { icon: "🔬", label: "Lab",     path: "/lessons"     },
                 { icon: "💬", label: "Q & A",   path: "/qa"          },
@@ -344,6 +345,7 @@ export default function GardynDashboard() {
 /* ─── Get Started (brand-new teacher) ───────────────────── */
 function GetStartedCard() {
   const steps = [
+    { to: "/learn/place-ycubes", label: "Plan where each plant goes", hint: "A 5-minute guide that fills in your Tracker." },
     { to: "/tracker",     label: "Set up your tracker",            hint: "Add what's planted in each slot." },
     { to: "/maintenance", label: "Log your maintenance dates",     hint: "Enter when you last cleaned, dosed, and checked." },
     { to: "/plants",      label: "Browse the Plant Library",       hint: "See germination and harvest times." },

@@ -90,8 +90,13 @@ export default function ShellLayout() {
           id="main-content"
           className={`flex-1 overflow-y-auto px-5 py-6 ${isMobile ? "mb-28" : "lg:py-10"}`}
         >
-          <WelcomeCard />
-          <ProfileNudge />
+          {/* Keep guide pages focused: no banners mid-lesson. */}
+          {!location.pathname.startsWith("/learn/") && (
+            <>
+              <WelcomeCard />
+              <ProfileNudge />
+            </>
+          )}
           <Outlet />
         </main>
 

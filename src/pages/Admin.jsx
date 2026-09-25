@@ -9,6 +9,7 @@ import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { displayName } from "../utils/displayName";
 import { missingProfileFields } from "../config/app";
+import { TUTORIALS } from "../data/tutorials";
 
 // Statewide rollout means hundreds of educators across many districts.
 // This panel is built to scan and approve them quickly without mistakes:
@@ -46,6 +47,7 @@ export default function Admin() {
   const tab = ["plants", "codes", "problems"].includes(params.get("tab")) ? params.get("tab") : "educators";
   const setTab = (t) => setParams(t === "educators" ? {} : { tab: t }, { replace: true });
   const [problemCount, setProblemCount] = useState(0);
+  const [learnDone, setLearnDone] = useState({}); // user id -> guides finished
   const reloadTimer = useRef(null);
 
   const loadUsers = useCallback(async () => {
@@ -66,6 +68,21 @@ export default function Admin() {
   useEffect(() => {
     if (!authLoading && profile?.role === "admin") loadUsers();
   }, [authLoading, profile?.role, loadUsers]);
+
+  // Learn guides finished per educator (quietly empty until the table exists).
+  useEffect(() => {
+    if (authLoading || profile?.role !== "admin") return;
+    supabase
+      .from("learn_progress")
+      .select("user_id")
+      .not("completed_at", "is", null)
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const m = {};
+        for (const r of data) m[r.user_id] = (m[r.user_id] || 0) + 1;
+        setLearnDone(m);
+      });
+  }, [authLoading, profile?.role]);
 
   // Badge on the Problems tab (quietly 0 until the problems log exists).
   useEffect(() => {
@@ -401,6 +418,9 @@ export default function Admin() {
                     {[u.school, u.district, u.remc].filter(Boolean).join(" · ") || u.email}
                   </p>
                   {(u.school || u.district) && <p className="text-xs text-gray-500 truncate">{u.email}</p>}
+                  {learnDone[u.id] > 0 && (
+                    <p className="text-[11px] text-teal-800 font-semibold">🎓 {learnDone[u.id]} of {TUTORIALS.length} Learn guides done</p>
+                  )}
                 </div>
                 {!isSelf && !isAdminRow && (
                   <button

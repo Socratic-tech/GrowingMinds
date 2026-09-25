@@ -59,6 +59,13 @@ export default function WelcomeCard() {
       cta: "Open tracker",
     },
     {
+      icon: "🎓",
+      title: "Learn the basics",
+      body: "Hands-on guides: placing yCubes, thinning sprouts and harvesting so plants grow back.",
+      action: () => navigate("/learn"),
+      cta: "Learn",
+    },
+    {
       icon: "🔧",
       title: "Log your last maintenance",
       body: "Enter when you last cleaned, refilled, and fed the unit — we'll remind you what's due.",

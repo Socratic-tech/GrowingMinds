@@ -19,6 +19,8 @@ import Admin from "./pages/Admin";
 import Pending from "./pages/Pending";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
+import Learn from "./pages/Learn";
+import LearnGuide from "./pages/LearnGuide";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -61,6 +63,8 @@ export default function App() {
         <Route path="harvest" element={<HarvestLog />} />
         <Route path="lessons" element={<LessonLab />} />
         <Route path="gardyn" element={<GardynDashboard />} />
+        <Route path="learn" element={<Learn />} />
+        <Route path="learn/:id" element={<LearnGuide />} />
         <Route path="qa" element={<QA />} />
         <Route path="profile/:userId" element={<Profile />} />
 
