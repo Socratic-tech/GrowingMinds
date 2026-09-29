@@ -1,0 +1,60 @@
+# Weekly: pull the latest yCube catalog from mygardyn.com into Supabase,
+# so the Plants tab and the Slot Tracker's plant list stay current.
+# Results show on the run's Summary page; when something changes, an
+# issue is opened so the team hears about it (and can fill in light zones
+# for new plants).
+#
+# Setup (once): repo Settings → Secrets and variables → Actions:
+#   SUPABASE_URL               e.g. https://abcd.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY  Supabase → Project Settings → API → service_role
+# Run it by hand: Actions → "Sync Gardyn plants" → Run workflow.
+
+name: Sync Gardyn plants
+
+on:
+  schedule:
+    - cron: "23 11 * * 1" # Mondays, ~7:23am Eastern (6:23 in winter)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (report only, save nothing)"
+        type: boolean
+        default: false
+      force:
+        description: "Allow more than 15 plants to be marked no longer sold"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Sync catalog
+        id: sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          FORCE: ${{ inputs.force && '1' || '0' }}
+        run: node scripts/sync-gardyn-plants.mjs
+      - name: Open an issue when the catalog changed
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue create --title "Gardyn catalog changed ($(date +%F))" --body-file sync-report.md
+      - name: Open an issue when the sync fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f sync-report.md ] || echo "The sync failed before writing a report. See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" > sync-report.md
+          gh issue create --title "Gardyn catalog sync failed ($(date +%F))" --body-file sync-report.md

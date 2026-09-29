@@ -131,7 +131,8 @@ export default function Tracker() {
     const selectSlots = () => supabase.from("tracker_slots").select("*").eq("user_id", user.id);
 
     const [plantRes, slotRes] = await Promise.all([
-      supabase.from("plants").select("name, germination_days, harvest_days, category, light_zone").order("name"),
+      // "*" so this works before and after the store columns exist.
+      supabase.from("plants").select("*").order("name"),
       selectSlots(),
     ]);
     if (isCancelled()) return;
@@ -494,6 +495,24 @@ export default function Tracker() {
   );
 }
 
+/* ─── Plant picker groups ───────────────────────────────── */
+// Store yCubes grouped like the Gardyn store. Plants Gardyn no longer
+// sells only appear when a slot already has one, so old slots still work.
+const PICKER_ORDER = ["Greens", "Herbs", "Fruits & Veggies", "Flowers"];
+function plantGroups(plants, current) {
+  const groups = new Map();
+  const retired = [];
+  for (const p of plants) {
+    if (p.in_gardyn_store === false) { if (p.name === current) retired.push(p); continue; }
+    const g = PICKER_ORDER.includes(p.category) ? p.category : "Other plants";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(p);
+  }
+  const out = [...PICKER_ORDER, "Other plants"].filter((g) => groups.has(g)).map((g) => [g, groups.get(g)]);
+  if (retired.length) out.push(["No longer sold by Gardyn", retired]);
+  return out;
+}
+
 /* ─── Slot Edit Panel ────────────────────────────────────── */
 function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose }) {
   const [form, setForm] = useState({
@@ -615,10 +634,14 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
                        shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700"
           >
             <option value="">— Empty —</option>
-            {plants.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}
-              </option>
+            {plantGroups(plants, form.plant_name).map(([group, list]) => (
+              <optgroup key={group} label={group}>
+                {list.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
