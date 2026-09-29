@@ -27,6 +27,45 @@ const CATEGORIES = ["All", "Greens", "Herbs", "Fruits & Veggies", "Flowers"];
 const gardynUrl = (handle) => `https://mygardyn.com/products/${encodeURIComponent(handle)}`;
 const ZONES      = ["All", "Yellow (Low)", "Orange (Med)", "Red (High)"];
 
+/* ─── Skill level (Gardyn's "care level") ────────────────── */
+// Gardyn rates yCubes Beginner / Intermediate / Expert. We show Expert as
+// "Advanced" to match the Learn guide levels.
+const SKILLS = {
+  beginner:     { label: "Beginner",     icon: "🌱", badge: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+  intermediate: { label: "Intermediate", icon: "🌿", badge: "bg-sky-50 text-sky-800 border-sky-200" },
+  advanced:     { label: "Advanced",     icon: "🌳", badge: "bg-purple-50 text-purple-800 border-purple-200" },
+};
+const SKILL_FILTERS = ["All", "beginner", "intermediate", "advanced"];
+function skillOf(p) {
+  const c = String(p.care_level || "").trim().toLowerCase();
+  if (c.startsWith("begin") || c === "easy") return "beginner";
+  if (c.startsWith("inter") || c === "medium") return "intermediate";
+  if (c.startsWith("expert") || c.startsWith("adv") || c === "hard") return "advanced";
+  return null;
+}
+
+/* ─── Sorting ────────────────────────────────────────────── */
+const SORTS = {
+  name:    { label: "Name (A–Z)" },
+  fastest: { label: "Fastest to harvest" },
+  slowest: { label: "Slowest to harvest" },
+};
+const byName = (a, b) => a.name.localeCompare(b.name);
+function sortPlants(list, sort) {
+  if (sort === "name") return [...list].sort(byName);
+  const dir = sort === "slowest" ? -1 : 1;
+  return [...list].sort((a, b) => {
+    const ha = a.harvest_days, hb = b.harvest_days;
+    if (ha == null && hb == null) return byName(a, b);
+    if (ha == null) return 1; // unknown harvest time always last
+    if (hb == null) return -1;
+    if (ha !== hb) return (ha - hb) * dir;
+    const ga = a.germination_days ?? 99, gb = b.germination_days ?? 99;
+    if (ga !== gb) return (ga - gb) * dir;
+    return byName(a, b);
+  });
+}
+
 export default function PlantLibrary() {
   const { showToast } = useToast();
 
@@ -35,6 +74,8 @@ export default function PlantLibrary() {
   const [search,  setSearch]  = useState("");
   const [cat,     setCat]     = useState("All");
   const [zone,    setZone]    = useState("All");
+  const [skill,   setSkill]   = useState("All");
+  const [sort,    setSort]    = useState("name");
   const [expanded, setExpanded] = useState(null); // plant name or null
 
   /* ── Load plants ─────────────────────────────────────────── */
@@ -63,15 +104,23 @@ export default function PlantLibrary() {
   /* ── Filtered list ───────────────────────────────────────── */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return plants.filter((p) => {
+    const list = plants.filter((p) => {
       if (cat  !== "All" && p.category  !== cat)  return false;
+      if (skill !== "All" && skillOf(p) !== skill) return false;
       if (zone !== "All" && p.light_zone !== zone) return false;
       if (q && !p.name.toLowerCase().includes(q) &&
                !(p.lesson_hook || "").toLowerCase().includes(q) &&
                !(p.teacher_note || "").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [plants, search, cat, zone]);
+    return sortPlants(list, sort);
+  }, [plants, search, cat, zone, skill, sort]);
+
+  const skillCounts = useMemo(() => {
+    const counts = { All: plants.length };
+    plants.forEach((p) => { const s = skillOf(p); if (s) counts[s] = (counts[s] || 0) + 1; });
+    return counts;
+  }, [plants]);
 
   /* ── Category counts ─────────────────────────────────────── */
   const catCounts = useMemo(() => {
@@ -194,8 +243,47 @@ export default function PlantLibrary() {
             })}
           </div>
 
+          {/* ── Skill filter + sort ───────────────────────────── */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by skill level">
+              {SKILL_FILTERS.map((s) => {
+                const meta = SKILLS[s];
+                const active = skill === s;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setSkill(s)}
+                    aria-pressed={active}
+                    className={`px-3 py-1.5 rounded-full text-xs lg:text-sm font-semibold
+                                border transition-colors focus-visible:ring-2 focus-visible:ring-teal-700
+                                ${active
+                                  ? "bg-teal-700 text-white border-teal-700"
+                                  : "bg-white text-gray-600 border-gray-200 hover:border-teal-400"
+                                }`}
+                  >
+                    {meta && <span className="mr-1" aria-hidden="true">{meta.icon}</span>}
+                    {meta ? meta.label : "All Skill Levels"}
+                    {meta && <span className="ml-1.5 opacity-60 text-[10px]">{skillCounts[s] ?? 0}</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <label className="flex items-center gap-2 text-xs lg:text-sm font-semibold text-gray-600">
+              Sort
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs lg:text-sm
+                           font-semibold text-gray-800 shadow-sm focus-visible:ring-2 focus-visible:ring-teal-700"
+              >
+                {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </label>
+          </div>
+
           {/* ── Result count ─────────────────────────────────── */}
-          {(search || cat !== "All" || zone !== "All") && (
+          {(search || cat !== "All" || zone !== "All" || skill !== "All") && (
             <p className="text-xs text-gray-500" aria-live="polite">
               {filtered.length === 0
                 ? "No plants match your filters."
@@ -225,7 +313,7 @@ export default function PlantLibrary() {
               <p className="text-4xl mb-3">🌵</p>
               <p className="text-sm">No plants match your filters.</p>
               <button
-                onClick={() => { setSearch(""); setCat("All"); setZone("All"); }}
+                onClick={() => { setSearch(""); setCat("All"); setZone("All"); setSkill("All"); }}
                 className="mt-4 text-teal-700 text-sm underline"
               >
                 Clear filters
@@ -242,6 +330,7 @@ export default function PlantLibrary() {
 function PlantCard({ plant, isExpanded, onToggle }) {
   const zoneMeta = ZONE_META[plant.light_zone] || null;
   const catIcon  = CATEGORY_ICONS[plant.category] || "🌱";
+  const skillMeta = SKILLS[skillOf(plant)] || null;
 
   return (
     <div
@@ -285,10 +374,11 @@ function PlantCard({ plant, isExpanded, onToggle }) {
                 </span>
               )}
 
-              {plant.care_level && (
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-50 text-gray-600
-                                 border border-gray-200 px-2 py-0.5 rounded-full">
-                  {plant.care_level}
+              {skillMeta && (
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider
+                                  border px-2 py-0.5 rounded-full ${skillMeta.badge}`}>
+                  <span aria-hidden="true">{skillMeta.icon}</span>
+                  {skillMeta.label}
                 </span>
               )}
 
@@ -378,7 +468,7 @@ function PlantCard({ plant, isExpanded, onToggle }) {
             {plant.first_harvest && (
               <StatPill label="Gardyn says" value={plant.first_harvest} />
             )}
-            {plant.care_level && <StatPill label="Care" value={plant.care_level} />}
+            {(skillMeta || plant.care_level) && <StatPill label="Skill" value={skillMeta?.label || plant.care_level} />}
             {plant.yield && <StatPill label="Yield" value={plant.yield} />}
           </div>
 
