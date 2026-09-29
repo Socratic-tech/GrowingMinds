@@ -8,6 +8,8 @@ import {
   GARDYN_MODEL, GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, SLOT_COUNT, isValidSlotId,
   LIGHT_ZONE_META, getSlotLightZone, getLightMatch, MATCH_COPY, MATCH_TEXT, MATCH_BOX,
 } from "../config/gardyn";
+import { Link } from "react-router-dom";
+import TowerView, { SUN_STRIPE } from "../components/TowerView";
 
 /* ─── Slot layout: see src/config/gardyn.js ─────────────── */
 const COLUMNS = GARDYN_COLUMNS;
@@ -264,12 +266,13 @@ export default function Tracker() {
 
         {/* View toggle */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-          {[["grid","⊞"],["list","≡"]].map(([mode, icon]) => (
+          {[["grid","🗼", "Tower view"],["list","≡", "List view"]].map(([mode, icon, label]) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
               aria-pressed={viewMode === mode}
-              aria-label={`${mode} view`}
+              aria-label={label}
+              title={label}
               className={`w-8 h-8 rounded-lg text-sm flex items-center justify-center
                           transition-colors focus-visible:ring-2 focus-visible:ring-teal-700
                           ${viewMode === mode
@@ -333,84 +336,68 @@ export default function Tracker() {
               Each slot shows how much light it gets (row 1 is the top of the column). When you pick a plant,
               the tracker checks it against the slot and suggests better open slots.
             </p>
+            <Link to="/tracker/print"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-800 underline">
+              🖨️ Print slot stickers and a tower map to match your real tower
+            </Link>
           </div>
 
-          {/* ── Grid view ──────────────────────────────────── */}
+          {/* ── Tower view (matches the physical tower) ────── */}
           {viewMode === "grid" && (
-            <div className="space-y-4">
-              {COLUMNS.map((col) => (
-                <div key={col}>
-                  <h2 className="text-xs uppercase tracking-widest font-bold text-gray-500 mb-2">
-                    Column {col}
-                  </h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {ROWS.map((row) => {
-                      const id    = `${col}${row}`;
-                      const slot  = slots[id];
-                      const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
-                      const plant = plantMap[slot?.plant_name];
-                      const zoneMeta = LIGHT_ZONE_META[getSlotLightZone(id)];
-                      const match = plant ? getLightMatch(getSlotLightZone(id), plant.light_zone) : "unknown";
-
-                      const harvestEta = plant && slot?.date_planted
-                        ? etaDate(slot.date_planted, plant.harvest_days)
-                        : null;
-
-                      return (
-                        <button
-                          key={id}
-                          onClick={(e) => openEditor(id, e.currentTarget)}
-                          disabled={!slot}
-                          aria-haspopup="dialog"
-                          aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""} · ${zoneMeta.label}${plant ? ` · ${MATCH_COPY[match]}` : ""}`}
-                          className={`text-left p-3 rounded-2xl border transition-all
-                                      hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-teal-700
-                                      ${style.bg} ${style.border}
-                                      ${editSlot === id ? "ring-2 ring-teal-400 shadow-md" : match === "poor" ? "ring-2 ring-red-300" : ""}`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-bold text-gray-500">{id}</span>
-                            <span className={`w-2 h-2 rounded-full ${style.dot}`} aria-hidden="true" />
-                          </div>
-
-                          <p className={`text-xs font-semibold leading-tight ${style.text} line-clamp-2`}>
-                            {slot?.plant_name || "Empty"}
-                          </p>
-
-                          {slot?.status && slot.status !== "Empty" && (
-                            <p className={`text-[10px] font-bold uppercase tracking-wide mt-0.5 ${style.text}`}>
-                              {slot.status}
-                            </p>
-                          )}
-
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded-full border text-[9px] font-bold uppercase tracking-wide ${zoneMeta.badge}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${zoneMeta.dot}`} aria-hidden="true" />
-                            {zoneMeta.short} sun
+            <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-5 shadow-sm">
+              <TowerView
+                renderSlot={(id, zoneMeta) => {
+                  const slot  = slots[id];
+                  const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
+                  const plant = plantMap[slot?.plant_name];
+                  const zone  = getSlotLightZone(id);
+                  const match = plant ? getLightMatch(zone, plant.light_zone) : "unknown";
+                  const empty = !slot?.plant_name || slot?.status === "Empty";
+                  const harvestEta = plant && slot?.date_planted ? etaDate(slot.date_planted, plant.harvest_days) : null;
+                  return (
+                    <button
+                      onClick={(e) => openEditor(id, e.currentTarget)}
+                      disabled={!slot}
+                      aria-haspopup="dialog"
+                      aria-label={`Slot ${id}, ${id.slice(0, 1) === COLUMNS[0] ? "left" : "right"} column, row ${id.slice(1)} from the top: ${empty ? "Empty" : `${slot.plant_name}, ${slot.status}`} · ${zoneMeta.label}${plant ? ` · ${MATCH_COPY[match]}` : ""}`}
+                      className={`w-full h-full min-h-[58px] text-left flex overflow-hidden rounded-xl border transition-all
+                                  hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-teal-700
+                                  ${empty ? "bg-white border-dashed border-gray-300" : `${style.bg} ${style.border}`}
+                                  ${editSlot === id ? "ring-2 ring-teal-500 shadow-md" : match === "poor" ? "ring-2 ring-red-300" : ""}`}
+                    >
+                      <span className={`w-1.5 shrink-0 ${SUN_STRIPE[zone]}`} title={zoneMeta.label} aria-hidden="true" />
+                      <span className="flex-1 min-w-0 px-2 py-1.5">
+                        <span className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-bold text-gray-500">{id}</span>
+                          <span className={`text-[9px] font-bold uppercase ${zoneMeta.text}`}>{zoneMeta.short} sun</span>
+                        </span>
+                        <span className={`block text-xs sm:text-sm font-semibold leading-tight line-clamp-2 ${empty ? "text-gray-400" : style.text}`}>
+                          {empty ? "Empty" : slot.plant_name}
+                        </span>
+                        {!empty && (
+                          <span className="flex items-center gap-1 mt-0.5">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} aria-hidden="true" />
+                            <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wide truncate ${style.text}`}>{slot.status}</span>
+                            {match === "poor" && <span className="text-[10px]" title={MATCH_COPY.poor} aria-hidden="true">⚠️</span>}
                           </span>
-
-                          {plant && match !== "unknown" && (
-                            <p className={`text-[9px] mt-1 font-bold uppercase tracking-wide ${MATCH_TEXT[match]}`}>
-                              {MATCH_COPY[match]}
-                            </p>
-                          )}
-
-                          {harvestEta && (
-                            <p className="text-[10px] text-gray-500 mt-1">
-                              🌾 {formatDate(harvestEta)}
-                            </p>
-                          )}
-
-                          {slot?.student_team && (
-                            <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-                              👤 {slot.student_team}
-                            </p>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                        )}
+                        {(harvestEta || slot?.student_team) && (
+                          <span className="hidden sm:block text-[10px] text-gray-500 mt-0.5 truncate">
+                            {harvestEta && `🌾 ${formatDate(harvestEta)}`}{harvestEta && slot?.student_team && " · "}{slot?.student_team && `👤 ${slot.student_team}`}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                }}
+              />
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-3 text-[11px] text-gray-600">
+                {Object.entries(LIGHT_ZONE_META).map(([z, m]) => (
+                  <span key={z} className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-4 rounded-sm ${SUN_STRIPE[z]}`} aria-hidden="true" /> {m.label}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 

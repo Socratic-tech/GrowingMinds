@@ -3,6 +3,7 @@ import { supabase } from "../../supabase/client";
 import { useAuth } from "../../context/AuthProvider";
 import { useToast } from "../ui/toast";
 import { todayLocal } from "../../utils/date";
+import TowerView from "../TowerView";
 import {
   GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, LIGHT_ZONE_META,
   getSlotLightZone, getLightMatch, MATCH_COPY,
@@ -11,22 +12,15 @@ import {
 /* ─── Light map (read-only) ─────────────────────────────── */
 export function LightMap() {
   return (
-    <div className="flex gap-3 justify-center" aria-label="Light level of each slot, row 1 at the top">
-      {GARDYN_COLUMNS.map((col) => (
-        <div key={col} className="flex flex-col gap-1.5">
-          <p className="text-[11px] font-bold text-center text-gray-600 tracking-widest">COLUMN {col}</p>
-          {GARDYN_ROWS.map((r) => {
-            const id = `${col}${r}`;
-            const m = LIGHT_ZONE_META[getSlotLightZone(id)];
-            return (
-              <div key={id} className={`flex items-center justify-between gap-3 w-32 px-3 py-1 rounded-lg border text-xs font-semibold ${m.badge}`}>
-                <span className="text-gray-800">{id}</span>
-                <span>{m.short}</span>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+    <div aria-label="Light level of each slot, as you face the tower. Row 1 is the top.">
+      <TowerView
+        renderSlot={(id, m) => (
+          <div className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg border text-xs font-semibold ${m.badge}`}>
+            <span className="text-gray-800">{id}</span>
+            <span>{m.short}</span>
+          </div>
+        )}
+      />
     </div>
   );
 }

@@ -22,6 +22,7 @@ import Profile from "./pages/Profile";
 import Learn from "./pages/Learn";
 import LearnGuide from "./pages/LearnGuide";
 import JobCards from "./pages/JobCards";
+import TowerPrint from "./pages/TowerPrint";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="plants" element={<PlantLibrary />} />
         <Route path="maintenance" element={<Maintenance />} />
         <Route path="tracker" element={<Tracker />} />
+        <Route path="tracker/print" element={<TowerPrint />} />
         <Route path="harvest" element={<HarvestLog />} />
         <Route path="lessons" element={<LessonLab />} />
         <Route path="gardyn" element={<GardynDashboard />} />
