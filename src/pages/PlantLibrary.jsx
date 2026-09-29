@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../supabase/client";
 import { useToast } from "../components/ui/toast";
 import { PlantLibrarySkeleton } from "../components/ui/Skeleton";
+import NutritionPanel from "../components/NutritionPanel";
 
 /* ─── Light zone display helpers ─────────────────────────── */
 const ZONE_META = {
@@ -453,6 +454,8 @@ function PlantCard({ plant, isExpanded, onToggle }) {
               <span className="font-semibold text-gray-800">Perfect for:</span> {plant.perfect_for}
             </p>
           )}
+
+          <NutritionPanel plant={plant} />
 
           {/* Timing details */}
           <div className="grid grid-cols-3 gap-2 pt-1">
