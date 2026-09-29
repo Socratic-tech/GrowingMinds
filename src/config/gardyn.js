@@ -11,7 +11,8 @@ const VALID = new Set(SLOT_IDS);
 export const isValidSlotId = (id) => VALID.has(id);
 
 /* ─── Light zones ─────────────────────────────────────────
-   From the Gardyn light image (John, May 2026). Row 1 is the TOP of the
+   From the Gardyn light image (John, May 2026; corrected Sep 2026:
+   high sun is A3, A5, A7 and B4, B6). Row 1 is the TOP of the
    column, row 8 the BOTTOM. Keys match plants.light_zone values. */
 export const LIGHT_ZONE_META = {
   "Yellow (Low)": { label: "Low Sun",    short: "Low",  rank: 1, dot: "bg-yellow-400", text: "text-yellow-800", badge: "bg-yellow-50 border-yellow-200 text-yellow-800" },
@@ -20,8 +21,8 @@ export const LIGHT_ZONE_META = {
 };
 
 export const SLOT_LIGHT_ZONES = {
-  A1: "Yellow (Low)", A2: "Orange (Med)", A3: "Orange (Med)", A4: "Orange (Med)",
-  A5: "Red (High)",   A6: "Red (High)",   A7: "Red (High)",   A8: "Orange (Med)",
+  A1: "Yellow (Low)", A2: "Orange (Med)", A3: "Red (High)",   A4: "Orange (Med)",
+  A5: "Red (High)",   A6: "Orange (Med)", A7: "Red (High)",   A8: "Orange (Med)",
   B1: "Yellow (Low)", B2: "Orange (Med)", B3: "Orange (Med)", B4: "Red (High)",
   B5: "Orange (Med)", B6: "Red (High)",   B7: "Orange (Med)", B8: "Orange (Med)",
 };
