@@ -206,7 +206,7 @@ export default function Tracker() {
   }
 
   /* ── Save slot edits ─────────────────────────────────────── */
-  async function saveSlot(slotId, updates) {
+  async function saveSlot(slotId, updates, { recycled = false } = {}) {
     const slot = slots[slotId];
     if (!slot?.id) return;
 
@@ -221,7 +221,7 @@ export default function Tracker() {
       showToast({ title: "Failed to save slot", description: error.message, type: "error" });
     } else {
       setSlots((prev) => ({ ...prev, [slotId]: data }));
-      showToast({ title: `Slot ${slotId} updated`, type: "success" });
+      showToast({ title: recycled ? `♻️ Slot ${slotId} recycled and ready to plant` : `Slot ${slotId} updated`, type: "success" });
       closeEditor();
     }
   }
@@ -497,13 +497,14 @@ export default function Tracker() {
 
 /* ─── Plant picker groups ───────────────────────────────── */
 // Store yCubes grouped like the Gardyn store. Plants Gardyn no longer
-// sells only appear when a slot already has one, so old slots still work.
+// sells stay pickable (teachers stock up before a plant leaves the store)
+// and are listed last, labeled.
 const PICKER_ORDER = ["Greens", "Herbs", "Fruits & Veggies", "Flowers"];
-function plantGroups(plants, current) {
+function plantGroups(plants) {
   const groups = new Map();
   const retired = [];
   for (const p of plants) {
-    if (p.in_gardyn_store === false) { if (p.name === current) retired.push(p); continue; }
+    if (p.in_gardyn_store === false) { retired.push(p); continue; }
     const g = PICKER_ORDER.includes(p.category) ? p.category : "Other plants";
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(p);
@@ -523,6 +524,8 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
     observation_notes: slot.observation_notes || "",
   });
   const [saving, setSaving] = useState(false);
+  const [confirmRecycle, setConfirmRecycle] = useState(false);
+  const hasPlanting = Boolean(slot.plant_name || slot.date_planted || slot.student_team || slot.observation_notes || (slot.status && slot.status !== "Empty"));
   const headingRef = useRef(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -572,6 +575,17 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
       status:            form.status,
       observation_notes: form.observation_notes || null,
     });
+    setSaving(false);
+  }
+
+  // Recycle: the pod is done (harvested out, failed, or pulled). Clears the
+  // slot so it's ready for a new yCube.
+  async function handleRecycle() {
+    setSaving(true);
+    await onSave(slotId, {
+      plant_name: null, date_planted: null, student_team: null,
+      status: "Empty", observation_notes: null,
+    }, { recycled: true });
     setSaving(false);
   }
 
@@ -634,11 +648,11 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
                        shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700"
           >
             <option value="">— Empty —</option>
-            {plantGroups(plants, form.plant_name).map(([group, list]) => (
+            {plantGroups(plants).map(([group, list]) => (
               <optgroup key={group} label={group}>
                 {list.map((p) => (
                   <option key={p.name} value={p.name}>
-                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}
+                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}{p.in_gardyn_store === false ? " · discontinued" : ""}
                   </option>
                 ))}
               </optgroup>
@@ -743,6 +757,41 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
                        shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700 resize-none"
           />
         </div>
+
+        {/* Recycle */}
+        {hasPlanting && (
+          <div className="border border-gray-200 rounded-2xl p-3 bg-gray-50">
+            {!confirmRecycle ? (
+              <button
+                type="button"
+                onClick={() => setConfirmRecycle(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-emerald-600
+                           text-emerald-800 bg-white font-semibold text-sm hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-teal-700"
+              >
+                ♻️ Recycle this pod · empty the slot
+              </button>
+            ) : (
+              <div className="space-y-2" role="group" aria-label={`Recycle slot ${slotId}`}>
+                <p className="text-sm text-gray-800">
+                  <b>Empty slot {slotId}?</b> This clears the plant{slot.plant_name ? ` (${slot.plant_name})` : ""}, planted date, team and notes so it's ready for a new yCube.
+                </p>
+                <p className="text-xs text-gray-600">
+                  Harvest first? <a href="#/harvest" className="underline font-semibold text-teal-800">Log it in the Harvest Log</a> before you recycle.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleRecycle} disabled={saving}
+                    className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50">
+                    {saving ? "Recycling…" : "Yes, recycle it"}
+                  </button>
+                  <button type="button" onClick={() => setConfirmRecycle(false)}
+                    className="px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-xl text-sm">
+                    Keep it
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex gap-2 pt-1">
