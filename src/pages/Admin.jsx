@@ -48,6 +48,8 @@ export default function Admin() {
   const setTab = (t) => setParams(t === "educators" ? {} : { tab: t }, { replace: true });
   const [problemCount, setProblemCount] = useState(0);
   const [learnDone, setLearnDone] = useState({}); // user id -> guides finished
+  const [betaIds, setBetaIds] = useState(null); // Set of beta testers; null = table not set up
+  const [betaBusy, setBetaBusy] = useState(null);
   const reloadTimer = useRef(null);
 
   const loadUsers = useCallback(async () => {
@@ -83,6 +85,26 @@ export default function Admin() {
         setLearnDone(m);
       });
   }, [authLoading, profile?.role]);
+
+  // Beta testers (quietly hidden until supabase_photo_journal_2026-10.sql is run).
+  useEffect(() => {
+    if (authLoading || profile?.role !== "admin") return;
+    supabase.from("beta_testers").select("user_id").then(({ data, error }) => {
+      if (!error && data) setBetaIds(new Set(data.map((r) => r.user_id)));
+    });
+  }, [authLoading, profile?.role]);
+
+  async function toggleBeta(u) {
+    const on = betaIds.has(u.id);
+    setBetaBusy(u.id);
+    const { error } = on
+      ? await supabase.from("beta_testers").delete().eq("user_id", u.id)
+      : await supabase.from("beta_testers").upsert({ user_id: u.id, features: ["photo_journal"] });
+    setBetaBusy(null);
+    if (error) return showToast({ title: "Couldn't change beta access", description: error.message, type: "error" });
+    setBetaIds((s) => { const n = new Set(s); on ? n.delete(u.id) : n.add(u.id); return n; });
+    showToast({ title: on ? `Beta off for ${displayName(u)}` : `📷 Photo journal beta on for ${displayName(u)}`, type: "success" });
+  }
 
   // Badge on the Problems tab (quietly 0 until the problems log exists).
   useEffect(() => {
@@ -420,6 +442,18 @@ export default function Admin() {
                   {(u.school || u.district) && <p className="text-xs text-gray-500 truncate">{u.email}</p>}
                   {learnDone[u.id] > 0 && (
                     <p className="text-[11px] text-teal-800 font-semibold">🎓 {learnDone[u.id]} of {TUTORIALS.length} Learn guides done</p>
+                  )}
+                  {betaIds && (
+                    <button
+                      type="button"
+                      onClick={() => toggleBeta(u)}
+                      disabled={betaBusy === u.id}
+                      aria-pressed={betaIds.has(u.id)}
+                      className={`mt-1 text-[11px] font-semibold rounded-full border px-2 py-0.5 disabled:opacity-50
+                        ${betaIds.has(u.id) ? "bg-violet-100 border-violet-300 text-violet-900" : "bg-white border-gray-300 text-gray-600 hover:border-violet-400"}`}
+                    >
+                      🧪 Photo journal beta: {betaIds.has(u.id) ? "on" : "off"}
+                    </button>
                   )}
                 </div>
                 {!isSelf && !isAdminRow && (

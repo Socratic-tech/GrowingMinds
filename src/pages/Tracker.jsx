@@ -10,6 +10,8 @@ import {
 } from "../config/gardyn";
 import { Link } from "react-router-dom";
 import TowerView, { SUN_STRIPE } from "../components/TowerView";
+import PhotoJournalStrip from "../components/PhotoJournalStrip";
+import { useBeta } from "../utils/beta";
 
 /* ─── Slot layout: see src/config/gardyn.js ─────────────── */
 const COLUMNS = GARDYN_COLUMNS;
@@ -121,6 +123,19 @@ export default function Tracker() {
   const [loading,    setLoading]    = useState(true);
   const [editSlot,   setEditSlot]   = useState(null);
   const [viewMode,   setViewMode]   = useState("grid");
+  const photoBeta = useBeta(user?.id, "photo_journal");
+  const [photoCounts, setPhotoCounts] = useState({}); // slot id -> photos of its current planting
+
+  const loadPhotoCounts = useCallback(async () => {
+    if (!photoBeta) return;
+    const { data, error } = await supabase.from("slot_photos").select("slot_id, plant_name, date_planted").eq("user_id", user.id);
+    if (error || !data) return;
+    const counts = {};
+    for (const r of data) counts[`${r.slot_id}|${r.plant_name || ""}|${r.date_planted || ""}`] = (counts[`${r.slot_id}|${r.plant_name || ""}|${r.date_planted || ""}`] || 0) + 1;
+    setPhotoCounts(counts);
+  }, [photoBeta, user?.id]);
+  useEffect(() => { loadPhotoCounts(); }, [loadPhotoCounts]);
+  const photosFor = (id, s) => photoCounts[`${id}|${s?.plant_name || ""}|${s?.date_planted || ""}`] || 0;
 
   const [loadError,  setLoadError]  = useState(null);
   const lastTriggerRef = useRef(null);
@@ -382,6 +397,9 @@ export default function Tracker() {
                             {match === "poor" && <span className="text-[10px]" title={MATCH_COPY.poor} aria-hidden="true">⚠️</span>}
                           </span>
                         )}
+                        {photoBeta && !empty && photosFor(id, slot) > 0 && (
+                          <span className="block text-[10px] font-semibold text-violet-800 mt-0.5">📷 {photosFor(id, slot)}</span>
+                        )}
                         {(harvestEta || slot?.student_team) && (
                           <span className="hidden sm:block text-[10px] text-gray-500 mt-0.5 truncate">
                             {harvestEta && `🌾 ${formatDate(harvestEta)}`}{harvestEta && slot?.student_team && " · "}{slot?.student_team && `👤 ${slot.student_team}`}
@@ -487,6 +505,7 @@ export default function Tracker() {
               onSave={saveSlot}
               onClose={closeEditor}
               slots={slots}
+              photoJournal={photoBeta ? { userId: user.id, onChange: loadPhotoCounts } : null}
             />
           )}
         </>
@@ -515,7 +534,7 @@ function plantGroups(plants) {
 }
 
 /* ─── Slot Edit Panel ────────────────────────────────────── */
-function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose }) {
+function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose, photoJournal }) {
   const [form, setForm] = useState({
     plant_name:        slot.plant_name || "",
     date_planted:      slot.date_planted || "",
@@ -757,6 +776,9 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
                        shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700 resize-none"
           />
         </div>
+
+        {/* Photo journal (beta) */}
+        {photoJournal && <PhotoJournalStrip userId={photoJournal.userId} slotId={slotId} slot={slot} onChange={photoJournal.onChange} />}
 
         {/* Recycle */}
         {hasPlanting && (

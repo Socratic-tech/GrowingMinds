@@ -23,6 +23,7 @@ import Learn from "./pages/Learn";
 import LearnGuide from "./pages/LearnGuide";
 import JobCards from "./pages/JobCards";
 import TowerPrint from "./pages/TowerPrint";
+import SlotJournal from "./pages/SlotJournal";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="maintenance" element={<Maintenance />} />
         <Route path="tracker" element={<Tracker />} />
         <Route path="tracker/print" element={<TowerPrint />} />
+        <Route path="tracker/journal/:slotId" element={<SlotJournal />} />
         <Route path="harvest" element={<HarvestLog />} />
         <Route path="lessons" element={<LessonLab />} />
         <Route path="gardyn" element={<GardynDashboard />} />
