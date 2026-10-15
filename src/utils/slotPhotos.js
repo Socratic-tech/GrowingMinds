@@ -50,7 +50,7 @@ export async function compressPhoto(file) {
 }
 
 /** Upload one photo for a slot; returns the new slot_photos row. */
-export async function addSlotPhoto({ userId, slotId, plantName, datePlanted, file, caption, takenOn = todayLocal() }) {
+export async function addSlotPhoto({ userId, slotId, plantName, datePlanted, file, caption, takenOn = todayLocal(), tower }) {
   const { full, thumb } = await compressPhoto(file);
   const rand = Math.random().toString(36).slice(2, 8);
   const base = `${userId}/${slotId}/${takenOn}-${Date.now()}-${rand}`;
@@ -58,10 +58,11 @@ export async function addSlotPhoto({ userId, slotId, plantName, datePlanted, fil
   const up = await supabase.storage.from(BUCKET).upload(path, full, { contentType: "image/jpeg", upsert: false });
   if (up.error) throw up.error;
   const upThumb = await supabase.storage.from(BUCKET).upload(thumbPath, thumb, { contentType: "image/jpeg", upsert: false });
-  const { data, error } = await supabase.from("slot_photos").insert({
+  const stamp = tower?.stamp || ((r) => r);
+  const { data, error } = await supabase.from("slot_photos").insert(stamp({
     user_id: userId, slot_id: slotId, plant_name: plantName || null, date_planted: datePlanted || null,
     taken_on: takenOn, storage_path: path, thumb_path: upThumb.error ? null : thumbPath, caption: caption?.trim() || null,
-  }).select().single();
+  })).select().single();
   if (error) {
     await supabase.storage.from(BUCKET).remove([path, thumbPath]); // don't leave orphan files
     throw new Error(error.message?.includes("Photo limit") ? error.message : error.message || "Couldn't save the photo.");
@@ -69,9 +70,10 @@ export async function addSlotPhoto({ userId, slotId, plantName, datePlanted, fil
   return data;
 }
 
-export async function listSlotPhotos(userId, slotId) {
+export async function listSlotPhotos(userId, slotId, tower) {
   let q = supabase.from("slot_photos").select("*").eq("user_id", userId).order("taken_on").order("created_at");
   if (slotId) q = q.eq("slot_id", slotId);
+  if (tower) q = tower.scope(q);
   const { data, error } = await q;
   if (error) throw error;
   return data || [];

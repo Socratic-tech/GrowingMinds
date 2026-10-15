@@ -13,6 +13,9 @@ import TowerView, { SUN_STRIPE } from "../components/TowerView";
 import PhotoJournalStrip from "../components/PhotoJournalStrip";
 import StationCard from "../components/StationCard";
 import { useBeta } from "../utils/beta";
+import TowerSwitcher from "../components/TowerSwitcher";
+import { useTowers } from "../utils/towers";
+import { useCustomPlants, mergePlants } from "../utils/customPlants";
 
 /* ─── Slot layout: see src/config/gardyn.js ─────────────── */
 const COLUMNS = GARDYN_COLUMNS;
@@ -51,35 +54,40 @@ function daysAgo(iso) {
 // share a single seed request per user.
 const seedInFlight = new Map();
 
-async function seedMissingSlots(userId, missingIds) {
-  const rows = missingIds.map((id) => ({ user_id: userId, slot_id: id, status: "Empty" }));
+async function seedMissingSlots(userId, missingIds, tower) {
+  const rows = missingIds.map((id) => tower.stamp({ user_id: userId, slot_id: id, status: "Empty" }));
   if (rows.length === 0) return null;
 
-  const { error } = await supabase
-    .from("tracker_slots")
-    .upsert(rows, { onConflict: "user_id,slot_id", ignoreDuplicates: true });
-  if (!error) return null;
-  if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+  // Teachers with one tower: the classic upsert. Multiple towers (or once the
+  // per-tower unique index replaces the old rule): select, then insert.
+  if (!tower.enabled) {
+    const { error } = await supabase
+      .from("tracker_slots")
+      .upsert(rows, { onConflict: "user_id,slot_id", ignoreDuplicates: true });
+    if (!error) return null;
+    if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+  }
 
-  // Unique constraint not migrated yet: re-select, then insert only what's still missing.
-  const { data: current, error: selErr } = await supabase
+  const { data: current, error: selErr } = await tower.scope(supabase
     .from("tracker_slots")
     .select("slot_id")
-    .eq("user_id", userId);
+    .eq("user_id", userId));
   if (selErr) return selErr;
   const have = new Set((current || []).map((r) => r.slot_id));
   const stillMissing = rows.filter((r) => !have.has(r.slot_id));
   if (stillMissing.length === 0) return null;
   const { error: insErr } = await supabase.from("tracker_slots").insert(stillMissing);
+  if (insErr && /duplicate key/i.test(insErr.message || "")) return null; // another tab seeded first
   return insErr || null;
 }
 
-function seedOnce(userId, missingIds) {
-  if (!seedInFlight.has(userId)) {
-    const p = seedMissingSlots(userId, missingIds).finally(() => seedInFlight.delete(userId));
-    seedInFlight.set(userId, p);
+function seedOnce(userId, missingIds, tower) {
+  const k = `${userId}|${tower.currentKey}`;
+  if (!seedInFlight.has(k)) {
+    const p = seedMissingSlots(userId, missingIds, tower).finally(() => seedInFlight.delete(k));
+    seedInFlight.set(k, p);
   }
-  return seedInFlight.get(userId);
+  return seedInFlight.get(k);
 }
 
 function hasMissingSlots(bySlot) {
@@ -124,18 +132,20 @@ export default function Tracker() {
   const [loading,    setLoading]    = useState(true);
   const [editSlot,   setEditSlot]   = useState(null);
   const [viewMode,   setViewMode]   = useState("grid");
+  const towers = useTowers(user?.id);
+  const { enabled: customOn, customPlants } = useCustomPlants(user?.id);
   const photoBeta = useBeta(user?.id, "photo_journal");
   const stationBeta = useBeta(user?.id, "student_station");
   const [photoCounts, setPhotoCounts] = useState({}); // slot id -> photos of its current planting
 
   const loadPhotoCounts = useCallback(async () => {
-    if (!photoBeta) return;
-    const { data, error } = await supabase.from("slot_photos").select("slot_id, plant_name, date_planted").eq("user_id", user.id);
+    if (!photoBeta || !towers.ready) return;
+    const { data, error } = await towers.scope(supabase.from("slot_photos").select("slot_id, plant_name, date_planted").eq("user_id", user.id));
     if (error || !data) return;
     const counts = {};
     for (const r of data) counts[`${r.slot_id}|${r.plant_name || ""}|${r.date_planted || ""}`] = (counts[`${r.slot_id}|${r.plant_name || ""}|${r.date_planted || ""}`] || 0) + 1;
     setPhotoCounts(counts);
-  }, [photoBeta, user?.id]);
+  }, [photoBeta, user?.id, towers.ready, towers.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { loadPhotoCounts(); }, [loadPhotoCounts]);
   const photosFor = (id, s) => photoCounts[`${id}|${s?.plant_name || ""}|${s?.date_planted || ""}`] || 0;
 
@@ -144,8 +154,9 @@ export default function Tracker() {
 
   /* ── Load plants + slots ─────────────────────────────────── */
   const loadData = useCallback(async (isCancelled = () => false) => {
+    if (!towers.ready) return;
     setLoadError(null);
-    const selectSlots = () => supabase.from("tracker_slots").select("*").eq("user_id", user.id);
+    const selectSlots = () => towers.scope(supabase.from("tracker_slots").select("*").eq("user_id", user.id));
 
     const [plantRes, slotRes] = await Promise.all([
       // "*" so this works before and after the store columns exist.
@@ -172,7 +183,7 @@ export default function Tracker() {
     const missingIds = ALL_SLOT_IDS.filter((id) => !have.has(id));
 
     if (missingIds.length > 0) {
-      const seedErr = await seedOnce(user.id, missingIds);
+      const seedErr = await seedOnce(user.id, missingIds, towers);
       if (isCancelled()) return;
       if (seedErr) {
         showToast({ title: "Couldn't set up your slots", description: seedErr.message, type: "error" });
@@ -198,7 +209,7 @@ export default function Tracker() {
     }
     setSlots(bySlot);
     setLoading(false);
-  }, [user.id, showToast]);
+  }, [user.id, showToast, towers.ready, towers.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -257,7 +268,8 @@ export default function Tracker() {
   }, {});
 
   /* ── Plant lookup map ────────────────────────────────────── */
-  const plantMap = plants.reduce((m, p) => { m[p.name] = p; return m; }, {});
+  const allPlants = mergePlants(plants, customPlants);
+  const plantMap = allPlants.reduce((m, p) => { m[p.name] = p; return m; }, {});
 
   return (
     <div className="space-y-6">
@@ -302,6 +314,8 @@ export default function Tracker() {
           ))}
         </div>
       </div>
+
+      <TowerSwitcher userId={user.id} manage />
 
       {loading ? (
         <TrackerSkeleton />
@@ -365,7 +379,7 @@ export default function Tracker() {
             )}
           </div>
 
-          {stationBeta && <StationCard userId={user.id} />}
+          {stationBeta && towers.ready && <StationCard key={towers.currentKey} userId={user.id} tower={towers} />}
 
           {/* ── Tower view (matches the physical tower) ────── */}
           {viewMode === "grid" && (
@@ -509,12 +523,13 @@ export default function Tracker() {
               key={editSlot}
               slotId={editSlot}
               slot={slots[editSlot]}
-              plants={plants}
+              plants={allPlants}
+              customOn={customOn}
               plantMap={plantMap}
               onSave={saveSlot}
               onClose={closeEditor}
               slots={slots}
-              photoJournal={photoBeta ? { userId: user.id, onChange: loadPhotoCounts } : null}
+              photoJournal={photoBeta ? { userId: user.id, onChange: loadPhotoCounts, tower: towers } : null}
             />
           )}
         </>
@@ -530,20 +545,22 @@ export default function Tracker() {
 const PICKER_ORDER = ["Greens", "Herbs", "Fruits & Veggies", "Flowers"];
 function plantGroups(plants) {
   const groups = new Map();
-  const retired = [];
+  const retired = [], mine = [];
   for (const p of plants) {
+    if (p.custom) { mine.push(p); continue; }
     if (p.in_gardyn_store === false) { retired.push(p); continue; }
     const g = PICKER_ORDER.includes(p.category) ? p.category : "Other plants";
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(p);
   }
   const out = [...PICKER_ORDER, "Other plants"].filter((g) => groups.has(g)).map((g) => [g, groups.get(g)]);
+  if (mine.length) out.unshift(["My plants", mine]);
   if (retired.length) out.push(["No longer sold by Gardyn", retired]);
   return out;
 }
 
 /* ─── Slot Edit Panel ────────────────────────────────────── */
-function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose, photoJournal }) {
+function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose, photoJournal, customOn }) {
   const [form, setForm] = useState({
     plant_name:        slot.plant_name || "",
     date_planted:      slot.date_planted || "",
@@ -680,12 +697,15 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose,
               <optgroup key={group} label={group}>
                 {list.map((p) => (
                   <option key={p.name} value={p.name}>
-                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}{p.in_gardyn_store === false ? " · discontinued" : ""}
+                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}{p.in_gardyn_store === false ? " · discontinued" : ""}{p.custom ? " · custom" : ""}
                   </option>
                 ))}
               </optgroup>
             ))}
           </select>
+          {customOn && (
+            <a href="#/plants?mine=1" className="inline-block mt-1 text-xs font-semibold text-teal-800 underline">+ Add your own plant</a>
+          )}
         </div>
 
         {/* Light match */}
@@ -787,7 +807,7 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose,
         </div>
 
         {/* Photo journal (beta) */}
-        {photoJournal && <PhotoJournalStrip userId={photoJournal.userId} slotId={slotId} slot={slot} onChange={photoJournal.onChange} />}
+        {photoJournal && <PhotoJournalStrip userId={photoJournal.userId} slotId={slotId} slot={slot} onChange={photoJournal.onChange} tower={photoJournal.tower} />}
 
         {/* Recycle */}
         {hasPlanting && (

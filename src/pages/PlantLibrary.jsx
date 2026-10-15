@@ -3,6 +3,10 @@ import { supabase } from "../supabase/client";
 import { useToast } from "../components/ui/toast";
 import { PlantLibrarySkeleton } from "../components/ui/Skeleton";
 import NutritionPanel from "../components/NutritionPanel";
+import MyPlants from "../components/MyPlants";
+import { useAuth } from "../context/AuthProvider";
+import { useCustomPlants } from "../utils/customPlants";
+import { useSearchParams } from "react-router-dom";
 
 /* ─── Light zone display helpers ─────────────────────────── */
 const ZONE_META = {
@@ -69,6 +73,9 @@ function sortPlants(list, sort) {
 
 export default function PlantLibrary() {
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const { enabled: customOn, customPlants, reload: reloadCustom } = useCustomPlants(user?.id);
+  const [params] = useSearchParams();
 
   const [plants,  setPlants]  = useState([]);
   const [loading, setLoading] = useState(true);
@@ -160,6 +167,11 @@ export default function PlantLibrary() {
         <PlantLibrarySkeleton />
       ) : (
         <>
+          {customOn && (
+            <MyPlants userId={user.id} rows={customPlants} reload={reloadCustom} autoOpen={params.get("mine") === "1"}
+              catalogNames={new Set(plants.map((p) => p.name.trim().toLowerCase()))} />
+          )}
+
           {/* ── Search ───────────────────────────────────────── */}
           <div className="relative">
             <span

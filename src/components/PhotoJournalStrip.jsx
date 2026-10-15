@@ -6,7 +6,7 @@ import { todayLocal } from "../utils/date";
 
 // Photo journal (beta) inside a Tracker slot's editor: this planting's
 // photos so far, a button to add this week's, and a link to the timelapse.
-export default function PhotoJournalStrip({ userId, slotId, slot, onChange }) {
+export default function PhotoJournalStrip({ userId, slotId, slot, onChange, tower }) {
   const { showToast } = useToast();
   const [photos, setPhotos] = useState([]);
   const [urls, setUrls] = useState({});
@@ -17,7 +17,7 @@ export default function PhotoJournalStrip({ userId, slotId, slot, onChange }) {
 
   async function refresh() {
     try {
-      const rows = (await listSlotPhotos(userId, slotId)).filter((r) => plantingKey(r.plant_name, r.date_planted) === key);
+      const rows = (await listSlotPhotos(userId, slotId, tower)).filter((r) => plantingKey(r.plant_name, r.date_planted) === key);
       setPhotos(rows);
       setUrls(await signedUrls(rows.slice(-6).map(thumbOf)));
     } catch { /* feature not set up yet: show nothing */ }
@@ -30,7 +30,7 @@ export default function PhotoJournalStrip({ userId, slotId, slot, onChange }) {
     if (!file) return;
     setBusy(true);
     try {
-      await addSlotPhoto({ userId, slotId, plantName: slot.plant_name, datePlanted: slot.date_planted, file });
+      await addSlotPhoto({ userId, slotId, plantName: slot.plant_name, datePlanted: slot.date_planted, file, tower });
       showToast({ title: `📷 Photo added to ${slotId}`, type: "success" });
       await refresh();
       onChange?.();

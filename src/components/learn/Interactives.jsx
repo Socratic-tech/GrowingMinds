@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthProvider";
 import { useToast } from "../ui/toast";
 import { todayLocal } from "../../utils/date";
 import TowerView from "../TowerView";
+import { useTowers } from "../../utils/towers";
 import {
   GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, LIGHT_ZONE_META,
   getSlotLightZone, getLightMatch, MATCH_COPY,
@@ -47,6 +48,7 @@ const MATCH_RING = {
 
 export function SlotPlacer({ onComplete }) {
   const { user } = useAuth();
+  const tower = useTowers(user?.id);
   const { showToast } = useToast();
   const [plants, setPlants] = useState(FALLBACK_PLANTS);
   const [picked, setPicked] = useState(null);
@@ -84,7 +86,7 @@ export function SlotPlacer({ onComplete }) {
   async function saveToTracker() {
     if (!user?.id || placed === 0) return;
     setSaving(true);
-    const { data: rows, error } = await supabase.from("tracker_slots").select("id, slot_id, plant_name").eq("user_id", user.id);
+    const { data: rows, error } = await tower.scope(supabase.from("tracker_slots").select("id, slot_id, plant_name").eq("user_id", user.id));
     if (error) {
       setSaving(false);
       showToast({ title: "Couldn't reach your Tracker", description: error.message, type: "error" });
@@ -99,7 +101,7 @@ export function SlotPlacer({ onComplete }) {
       if (row?.plant_name) { skipped++; continue; }
       const res = row
         ? await supabase.from("tracker_slots").update(fields).eq("id", row.id)
-        : await supabase.from("tracker_slots").insert({ user_id: user.id, slot_id: slot, ...fields });
+        : await supabase.from("tracker_slots").insert(tower.stamp({ user_id: user.id, slot_id: slot, ...fields }));
       if (res.error) failed++; else added++;
     }
     setSaving(false);
@@ -198,7 +200,7 @@ export function SlotPlacer({ onComplete }) {
           disabled={saving || placed === 0 || saved}
           className="text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 rounded-xl px-3 py-2 disabled:opacity-50"
         >
-          {saved ? "✓ Saved to Tracker" : saving ? "Saving…" : "I planted these today: save to Tracker"}
+          {saved ? "✓ Saved to Tracker" : saving ? "Saving…" : `I planted these today: save to ${tower.enabled ? tower.current.name : "Tracker"}`}
         </button>
       </div>
       {placed < 4 && <p className="text-xs text-gray-500">Place at least 4 plants to continue. Saving is optional: skip it if you haven't planted yet.</p>}

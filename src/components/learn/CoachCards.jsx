@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../../supabase/client";
 import { computeCoaching } from "../../utils/coaching";
 import { loadProgress } from "../../utils/learnProgress";
+import { useCustomPlants, mergePlants } from "../../utils/customPlants";
 
 // Coaching cards on the Gardyn Dashboard: timely nudges from Tracker and
 // Maintenance data, each linking to the Learn guide that helps. "Not now"
@@ -29,6 +30,7 @@ export default function CoachCards({ userId, slots, maintenance }) {
   const [plants, setPlants] = useState([]);
   const [progress, setProgress] = useState({});
   const [hidden, setHidden] = useState(() => readHidden(userId));
+  const { customPlants } = useCustomPlants(userId);
 
   useEffect(() => {
     let off = false;
@@ -39,8 +41,8 @@ export default function CoachCards({ userId, slots, maintenance }) {
   }, [userId]);
 
   const cards = useMemo(
-    () => computeCoaching({ slots, plants, maintenance, progress }).filter((c) => !hidden[c.key]).slice(0, 3),
-    [slots, plants, maintenance, progress, hidden]
+    () => computeCoaching({ slots, plants: mergePlants(plants, customPlants), maintenance, progress }).filter((c) => !hidden[c.key]).slice(0, 3),
+    [slots, plants, customPlants, maintenance, progress, hidden]
   );
 
   function hide(key) {

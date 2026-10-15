@@ -5,6 +5,8 @@ import { useAuth } from "../context/AuthProvider";
 import { SLOT_IDS, GARDYN_COLUMNS, LIGHT_ZONE_META, getSlotLightZone } from "../config/gardyn";
 import { formatLocalDate, todayLocal } from "../utils/date";
 import TowerView, { SUN_STRIPE } from "../components/TowerView";
+import TowerSwitcher from "../components/TowerSwitcher";
+import { useTowers } from "../utils/towers";
 
 // Printables that tie the app to the physical tower:
 //  - Slot stickers: one per slot (A1–B8), to stick beside each slot or on
@@ -32,16 +34,17 @@ export default function TowerPrint() {
   const [slots, setSlots] = useState({});
   const [mode, setMode] = useState("stickers");
   const [withPlants, setWithPlants] = useState(false);
+  const tower = useTowers(user?.id);
 
   useEffect(() => {
-    if (!user?.id) return;
-    supabase.from("tracker_slots").select("slot_id, plant_name, status, date_planted, student_team").eq("user_id", user.id)
+    if (!user?.id || !tower.ready) return;
+    tower.scope(supabase.from("tracker_slots").select("slot_id, plant_name, status, date_planted, student_team").eq("user_id", user.id))
       .then(({ data }) => {
         const by = {};
         for (const r of data || []) if (!by[r.slot_id] || r.plant_name) by[r.slot_id] = r;
         setSlots(by);
       });
-  }, [user?.id]);
+  }, [user?.id, tower.ready, tower.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const planted = (id) => {
     const s = slots[id];
@@ -61,6 +64,8 @@ export default function TowerPrint() {
           </div>
         </div>
       </div>
+
+      {user?.id && <TowerSwitcher userId={user.id} />}
 
       <fieldset className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
         <legend className="text-sm font-bold text-gray-800 px-1">What to print</legend>
@@ -108,6 +113,7 @@ export default function TowerPrint() {
                   <div className="flex-1 px-2 py-1.5">
                     <p className="text-3xl font-bold text-gray-900 leading-none">{id}</p>
                     <p className="text-[11px] font-semibold text-gray-700 mt-1">{side(id)} column · {rowWords(id)}</p>
+                    {tower.enabled && <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{tower.current.name}</p>}
                     <p className={`text-[11px] font-bold ${m.text}`}>{m.label}</p>
                     {p && (
                       <p className="text-xs font-bold text-teal-900 mt-1 leading-tight">
@@ -122,7 +128,7 @@ export default function TowerPrint() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-200 p-4">
-            <h2 className="text-center text-lg font-bold text-teal-900 mb-2">Our Gardyn Tower</h2>
+            <h2 className="text-center text-lg font-bold text-teal-900 mb-2">{tower.enabled ? tower.current.name : "Our Gardyn Tower"}</h2>
             <TowerView
               caption={false}
               renderSlot={(id, m) => {

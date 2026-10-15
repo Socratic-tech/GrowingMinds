@@ -3,6 +3,7 @@ import { Navigate, useSearchParams } from "react-router-dom";
 import AdminPlants from "../components/admin/AdminPlants";
 import AdminProblems from "../components/admin/AdminProblems";
 import AdminImpact from "../components/admin/AdminImpact";
+import AdminPlantSuggestions from "../components/admin/AdminPlantSuggestions";
 import AdminEventCodes from "../components/admin/AdminEventCodes";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
@@ -49,7 +50,7 @@ export default function Admin() {
   const setTab = (t) => setParams(t === "educators" ? {} : { tab: t }, { replace: true });
   const [problemCount, setProblemCount] = useState(0);
   const [learnDone, setLearnDone] = useState({}); // user id -> guides finished
-  const [betaIds, setBetaIds] = useState(null); // Set of beta testers; null = table not set up
+  const [betaIds, setBetaIds] = useState(null); // Map user id -> feature switches; null = table not set up
   const [betaBusy, setBetaBusy] = useState(null);
   const reloadTimer = useRef(null);
 
@@ -90,21 +91,31 @@ export default function Admin() {
   // Beta testers (quietly hidden until supabase_photo_journal_2026-10.sql is run).
   useEffect(() => {
     if (authLoading || profile?.role !== "admin") return;
-    supabase.from("beta_testers").select("user_id").then(({ data, error }) => {
-      if (!error && data) setBetaIds(new Set(data.map((r) => r.user_id)));
+    supabase.from("beta_testers").select("user_id, features").then(({ data, error }) => {
+      if (!error && data) setBetaIds(new Map(data.map((r) => [r.user_id, r.features || []])));
     });
   }, [authLoading, profile?.role]);
 
-  async function toggleBeta(u) {
-    const on = betaIds.has(u.id);
-    setBetaBusy(u.id);
-    const { error } = on
-      ? await supabase.from("beta_testers").delete().eq("user_id", u.id)
-      : await supabase.from("beta_testers").upsert({ user_id: u.id, features: ["photo_journal", "student_station"] });
+  // Per-educator switches, all stored in beta_testers.features.
+  const SWITCHES = [
+    { id: "beta", label: "🧪 Beta", hint: "photo journal + student station", keys: ["photo_journal", "student_station"] },
+    { id: "custom", label: "🪴 Custom plants", hint: "on request", keys: ["custom_plants"] },
+    { id: "towers", label: "🗼 Multiple towers", hint: "on request", keys: ["multi_tower"] },
+  ];
+  const hasSwitch = (u, sw) => sw.keys.every((k) => (betaIds?.get(u.id) || []).includes(k));
+
+  async function toggleSwitch(u, sw) {
+    const cur = betaIds.get(u.id) || [];
+    const on = hasSwitch(u, sw);
+    const next = on ? cur.filter((k) => !sw.keys.includes(k)) : [...new Set([...cur, ...sw.keys])];
+    setBetaBusy(`${u.id}:${sw.id}`);
+    const { error } = next.length
+      ? await supabase.from("beta_testers").upsert({ user_id: u.id, features: next })
+      : await supabase.from("beta_testers").delete().eq("user_id", u.id);
     setBetaBusy(null);
-    if (error) return showToast({ title: "Couldn't change beta access", description: error.message, type: "error" });
-    setBetaIds((s) => { const n = new Set(s); on ? n.delete(u.id) : n.add(u.id); return n; });
-    showToast({ title: on ? `Beta off for ${displayName(u)}` : `🧪 Beta features on for ${displayName(u)}`, type: "success" });
+    if (error) return showToast({ title: "Couldn't change that switch", description: error.message, type: "error" });
+    setBetaIds((m) => { const n = new Map(m); next.length ? n.set(u.id, next) : n.delete(u.id); return n; });
+    showToast({ title: `${sw.label} ${on ? "off" : "on"} for ${displayName(u)}`, type: "success" });
   }
 
   // Badge on the Problems tab (quietly 0 until the problems log exists).
@@ -288,7 +299,7 @@ export default function Admin() {
         ))}
       </div>
 
-      {tab === "plants" && <AdminPlants />}
+      {tab === "plants" && <><AdminPlantSuggestions users={users} /><AdminPlants /></>}
       {tab === "codes" && <AdminEventCodes users={users} />}
       {tab === "problems" && <AdminProblems users={users} onCountChange={setProblemCount} />}
       {tab === "impact" && <AdminImpact />}
@@ -447,16 +458,19 @@ export default function Admin() {
                     <p className="text-[11px] text-teal-800 font-semibold">🎓 {learnDone[u.id]} of {TUTORIALS.length} Learn guides done</p>
                   )}
                   {betaIds && (
-                    <button
-                      type="button"
-                      onClick={() => toggleBeta(u)}
-                      disabled={betaBusy === u.id}
-                      aria-pressed={betaIds.has(u.id)}
-                      className={`mt-1 text-[11px] font-semibold rounded-full border px-2 py-0.5 disabled:opacity-50
-                        ${betaIds.has(u.id) ? "bg-violet-100 border-violet-300 text-violet-900" : "bg-white border-gray-300 text-gray-600 hover:border-violet-400"}`}
-                    >
-                      🧪 Beta (photo journal + student station): {betaIds.has(u.id) ? "on" : "off"}
-                    </button>
+                    <div className="mt-1 flex flex-wrap gap-1.5" role="group" aria-label={`Feature switches for ${displayName(u)}`}>
+                      {SWITCHES.map((sw) => {
+                        const on = hasSwitch(u, sw);
+                        return (
+                          <button key={sw.id} type="button" onClick={() => toggleSwitch(u, sw)} disabled={betaBusy === `${u.id}:${sw.id}`}
+                            aria-pressed={on} title={sw.hint}
+                            className={`text-[11px] font-semibold rounded-full border px-2 py-0.5 disabled:opacity-50
+                              ${on ? "bg-violet-100 border-violet-300 text-violet-900" : "bg-white border-gray-300 text-gray-600 hover:border-violet-400"}`}>
+                            {sw.label}: {on ? "on" : "off"}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
                 {!isSelf && !isAdminRow && (

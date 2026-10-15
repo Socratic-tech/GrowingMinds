@@ -8,7 +8,9 @@ import MiniLineChart from "./MiniLineChart";
 // Growth data (beta) for one planting in one slot: height and leaf-count
 // charts, the full table, and a quick "add a measurement" form. Students
 // add rows from the class station; teachers can add or delete here.
-export default function GrowthPanel({ userId, slotId, planting }) {
+export default function GrowthPanel({ userId, slotId, planting, tower }) {
+  const scope = tower?.scope || ((q) => q);
+  const stamp = tower?.stamp || ((r) => r);
   const { showToast } = useToast();
   const [rows, setRows] = useState(null);
   const [form, setForm] = useState({ height: "", leaves: "", note: "" });
@@ -16,10 +18,10 @@ export default function GrowthPanel({ userId, slotId, planting }) {
   const [confirm, setConfirm] = useState(null);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from("slot_measurements").select("*")
-      .eq("user_id", userId).eq("slot_id", slotId).order("measured_on").order("created_at");
+    const { data, error } = await scope(supabase.from("slot_measurements").select("*")
+      .eq("user_id", userId).eq("slot_id", slotId)).order("measured_on").order("created_at");
     setRows(error ? [] : data || []);
-  }, [userId, slotId]);
+  }, [userId, slotId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
 
   if (rows === null) return null;
@@ -36,10 +38,10 @@ export default function GrowthPanel({ userId, slotId, planting }) {
     const leaves = form.leaves === "" ? null : Number(form.leaves);
     if (height == null && leaves == null && !form.note.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from("slot_measurements").insert({
+    const { error } = await supabase.from("slot_measurements").insert(stamp({
       user_id: userId, slot_id: slotId, plant_name: planting.plant_name, date_planted: planting.date_planted,
       measured_on: todayLocal(), height_cm: height, leaf_count: leaves, note: form.note.trim() || null,
-    });
+    }));
     setSaving(false);
     if (error) return showToast({ title: "Couldn't save the measurement", description: error.message, type: "error" });
     setForm({ height: "", leaves: "", note: "" });

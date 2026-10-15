@@ -8,6 +8,8 @@ import { useBeta } from "../utils/beta";
 import { listSlotPhotos, signedUrls, deleteSlotPhoto, plantDay, groupPlantings, thumbOf, plantingKey as keyOf } from "../utils/slotPhotos";
 import { supabase } from "../supabase/client";
 import GrowthPanel from "../components/GrowthPanel";
+import TowerSwitcher from "../components/TowerSwitcher";
+import { useTowers } from "../utils/towers";
 
 // Slot journal (beta): a timelapse and growth data for one Tracker slot,
 // one planting at a time (recycled slots keep their old plantings).
@@ -18,6 +20,7 @@ export default function SlotJournal() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const beta = useBeta(user?.id, "photo_journal");
+  const tower = useTowers(user?.id);
   const [rows, setRows] = useState(null);
   const [urls, setUrls] = useState({});
   const [plantingKey, setPlantingKey] = useState(null);
@@ -29,16 +32,18 @@ export default function SlotJournal() {
   const [slotRow, setSlotRow] = useState(null);
 
   const load = useCallback(async () => {
+    if (!tower.ready) return;
+    setPlantingKey(null); setFrame(0);
     try {
-      supabase.from("tracker_slots").select("plant_name, date_planted, status").eq("user_id", user.id).eq("slot_id", slotId)
+      tower.scope(supabase.from("tracker_slots").select("plant_name, date_planted, status").eq("user_id", user.id).eq("slot_id", slotId))
         .maybeSingle().then(({ data }) => setSlotRow(data || null));
-      const r = await listSlotPhotos(user.id, slotId);
+      const r = await listSlotPhotos(user.id, slotId, tower);
       setRows(r);
       setUrls(await signedUrls([...new Set(r.flatMap((p) => [p.storage_path, thumbOf(p)]))]));
     } catch {
       setRows([]);
     }
-  }, [user?.id, slotId]);
+  }, [user?.id, slotId, tower.ready, tower.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (user?.id && isValidSlotId(slotId)) load(); }, [load, user?.id, slotId]);
 
   // Plantings = ones with photos + whatever is in the slot right now.
@@ -112,6 +117,8 @@ export default function SlotJournal() {
           </div>
         </div>
       </div>
+
+      {user?.id && <TowerSwitcher userId={user.id} />}
 
       {rows === null ? (
         <p className="text-sm text-gray-500">Loading photos…</p>
@@ -220,7 +227,7 @@ export default function SlotJournal() {
           </section>
           </>}
 
-          {beta && <GrowthPanel userId={user.id} slotId={slotId} planting={current} />}
+          {beta && <GrowthPanel key={tower.currentKey} userId={user.id} slotId={slotId} planting={current} tower={tower} />}
         </>
       )}
     </div>

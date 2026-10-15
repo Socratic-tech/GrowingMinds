@@ -5,6 +5,9 @@ import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
 import { todayLocal, isValidDateString, formatLocalDate } from "../utils/date";
 import { SLOT_IDS } from "../config/gardyn";
+import TowerSwitcher from "../components/TowerSwitcher";
+import { useTowers } from "../utils/towers";
+import { useCustomPlants, mergePlants } from "../utils/customPlants";
 
 const MAX_GRAMS = 10000;
 
@@ -18,6 +21,8 @@ function formatDate(iso) {
 export default function HarvestLog() {
   const { user }     = useAuth();
   const { showToast } = useToast();
+  const tower = useTowers(user?.id);
+  const { customPlants } = useCustomPlants(user?.id);
 
   const [entries,  setEntries]  = useState([]);
   const [plants,   setPlants]   = useState([]);
@@ -36,11 +41,12 @@ export default function HarvestLog() {
 
   /* ── Load data ───────────────────────────────────────────── */
   const loadData = useCallback(async () => {
+    if (!tower.ready) return;
     const [logRes, plantRes] = await Promise.all([
-      supabase
+      tower.scope(supabase
         .from("harvest_log")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", user.id))
         .order("harvest_date", { ascending: false }),
       supabase
         .from("plants")
@@ -59,7 +65,7 @@ export default function HarvestLog() {
     }
 
     setLoading(false);
-  }, [user.id, showToast]);
+  }, [user.id, showToast, tower.ready, tower.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -84,7 +90,7 @@ export default function HarvestLog() {
     }
 
     setSaving(true);
-    const { error } = await supabase.from("harvest_log").insert({
+    const { error } = await supabase.from("harvest_log").insert(tower.stamp({
       user_id:      user.id,
       harvest_date: form.harvest_date,
       plant_name:   form.plant_name,
@@ -92,7 +98,7 @@ export default function HarvestLog() {
       student_team: form.student_team || null,
       amount_grams: grams,
       notes:        form.notes     || null,
-    });
+    }));
 
     if (error) {
       // Keep the form as-is so the teacher can retry without re-typing.
@@ -165,6 +171,8 @@ export default function HarvestLog() {
           {showForm ? "Cancel" : "+ Log Harvest"}
         </button>
       </div>
+
+      <TowerSwitcher userId={user.id} />
 
       {loading ? (
         <HarvestSkeleton />
@@ -241,7 +249,7 @@ export default function HarvestLog() {
                   required
                 >
                   <option value="">— Select plant —</option>
-                  {plants.map((p) => (
+                  {mergePlants(plants, customPlants).map((p) => (
                     <option key={p.name} value={p.name}>{p.name}</option>
                   ))}
                 </select>
