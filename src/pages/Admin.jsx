@@ -52,6 +52,7 @@ export default function Admin() {
   const [learnDone, setLearnDone] = useState({}); // user id -> guides finished
   const [betaIds, setBetaIds] = useState(null); // Map user id -> feature switches; null = table not set up
   const [betaBusy, setBetaBusy] = useState(null);
+  const [betaSetupError, setBetaSetupError] = useState(null);
   const reloadTimer = useRef(null);
 
   const loadUsers = useCallback(async () => {
@@ -93,6 +94,7 @@ export default function Admin() {
     if (authLoading || profile?.role !== "admin") return;
     supabase.from("beta_testers").select("user_id, features").then(({ data, error }) => {
       if (!error && data) setBetaIds(new Map(data.map((r) => [r.user_id, r.features || []])));
+      else if (error) setBetaSetupError(error.message);
     });
   }, [authLoading, profile?.role]);
 
@@ -304,6 +306,14 @@ export default function Admin() {
       {tab === "problems" && <AdminProblems users={users} onCountChange={setProblemCount} />}
       {tab === "impact" && <AdminImpact />}
 
+      {tab === "educators" && betaSetupError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900" role="status">
+          <b>Feature switches (Beta, Custom plants, Multiple towers) aren't set up yet.</b> In the Supabase SQL Editor, run
+          {" "}<code>supabase_photo_journal_2026-10.sql</code>, then <code>supabase_beta_wave2_2026-10.sql</code>
+          {" "}(and <code>supabase_towers_custom_plants_2026-10.sql</code> for towers and custom plants). They'll appear on each active educator.
+          <span className="block text-xs mt-1 opacity-80">{betaSetupError}</span>
+        </div>
+      )}
       {tab === "educators" && (<>
       {/* SEARCH + FILTER */}
       <div className="flex flex-col sm:flex-row gap-2">

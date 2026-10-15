@@ -118,7 +118,8 @@ export default function AdminImpact() {
   if (error) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">
-        The impact dashboard isn't set up yet. Run <b>supabase_beta_wave2_2026-10.sql</b> in the Supabase SQL Editor.
+        The impact dashboard isn't set up yet. In the Supabase SQL Editor, run <b>supabase_photo_journal_2026-10.sql</b> first,
+        then <b>supabase_beta_wave2_2026-10.sql</b>. If you've already run both, run <code>NOTIFY pgrst, 'reload schema';</code> and refresh.
         <span className="block text-xs mt-1 opacity-80">{error}</span>
       </div>
     );
