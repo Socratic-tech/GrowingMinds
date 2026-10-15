@@ -33,4 +33,5 @@ export function useBeta(userId, feature) {
 
 export const BETA_FEATURES = {
   photo_journal: { label: "Photo journal", icon: "📷" },
+  student_station: { label: "Student data station", icon: "🔬" },
 };

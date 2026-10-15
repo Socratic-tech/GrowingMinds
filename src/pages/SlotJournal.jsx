@@ -5,10 +5,12 @@ import { useToast } from "../components/ui/toast";
 import { isValidSlotId, LIGHT_ZONE_META, getSlotLightZone } from "../config/gardyn";
 import { formatLocalDate } from "../utils/date";
 import { useBeta } from "../utils/beta";
-import { listSlotPhotos, signedUrls, deleteSlotPhoto, plantDay, groupPlantings } from "../utils/slotPhotos";
+import { listSlotPhotos, signedUrls, deleteSlotPhoto, plantDay, groupPlantings, thumbOf, plantingKey as keyOf } from "../utils/slotPhotos";
 import { supabase } from "../supabase/client";
+import GrowthPanel from "../components/GrowthPanel";
 
-// Photo journal (beta): a timelapse of one Tracker slot, one planting at a time.
+// Slot journal (beta): a timelapse and growth data for one Tracker slot,
+// one planting at a time (recycled slots keep their old plantings).
 const SPEEDS = [["Slow", 1500], ["Normal", 800], ["Fast", 350]];
 
 export default function SlotJournal() {
@@ -24,19 +26,30 @@ export default function SlotJournal() {
   const [speed, setSpeed] = useState(800);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingCaption, setEditingCaption] = useState(null);
+  const [slotRow, setSlotRow] = useState(null);
 
   const load = useCallback(async () => {
     try {
+      supabase.from("tracker_slots").select("plant_name, date_planted, status").eq("user_id", user.id).eq("slot_id", slotId)
+        .maybeSingle().then(({ data }) => setSlotRow(data || null));
       const r = await listSlotPhotos(user.id, slotId);
       setRows(r);
-      setUrls(await signedUrls(r.map((p) => p.storage_path)));
+      setUrls(await signedUrls([...new Set(r.flatMap((p) => [p.storage_path, thumbOf(p)]))]));
     } catch {
       setRows([]);
     }
   }, [user?.id, slotId]);
   useEffect(() => { if (user?.id && isValidSlotId(slotId)) load(); }, [load, user?.id, slotId]);
 
-  const plantings = useMemo(() => groupPlantings(rows || []), [rows]);
+  // Plantings = ones with photos + whatever is in the slot right now.
+  const plantings = useMemo(() => {
+    const g = groupPlantings(rows || []);
+    const live = slotRow?.plant_name && slotRow.status !== "Empty";
+    if (live && !g.some((p) => p.key === keyOf(slotRow.plant_name, slotRow.date_planted))) {
+      g.unshift({ key: keyOf(slotRow.plant_name, slotRow.date_planted), plant_name: slotRow.plant_name, date_planted: slotRow.date_planted, photos: [] });
+    }
+    return g;
+  }, [rows, slotRow]);
   const current = plantings.find((p) => p.key === plantingKey) || plantings[0];
   const photos = current?.photos || [];
   const shown = photos[Math.min(frame, Math.max(photos.length - 1, 0))];
@@ -93,21 +106,21 @@ export default function SlotJournal() {
           <div aria-hidden="true" className="w-10 h-10 bg-violet-100 text-violet-700 rounded-3xl lg:rounded-2xl flex items-center justify-center shadow">📷</div>
           <div>
             <h1 className="text-xl lg:text-3xl font-bold text-teal-800">
-              Slot {slotId} photo journal <span className="align-middle text-[10px] font-bold uppercase rounded-full bg-violet-200 text-violet-900 px-2 py-0.5">Beta</span>
+              Slot {slotId} journal <span className="align-middle text-[10px] font-bold uppercase rounded-full bg-violet-200 text-violet-900 px-2 py-0.5">Beta</span>
             </h1>
-            <p className="text-xs text-gray-600 mt-0.5">{zone.label} · add photos from the slot's editor in the Tracker</p>
+            <p className="text-xs text-gray-600 mt-0.5">{zone.label} · photos and growth data · add photos from the slot's editor in the Tracker</p>
           </div>
         </div>
       </div>
 
       {rows === null ? (
         <p className="text-sm text-gray-500">Loading photos…</p>
-      ) : !photos.length ? (
+      ) : !plantings.length ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center space-y-2">
           <p className="text-3xl" aria-hidden="true">🌱</p>
-          <p className="font-semibold text-gray-800">No photos of {slotId} yet.</p>
+          <p className="font-semibold text-gray-800">Nothing growing in {slotId} yet.</p>
           <p className="text-sm text-gray-600">
-            {beta ? <>Open slot {slotId} in the <Link className="underline font-semibold text-teal-800" to="/tracker">Tracker</Link> and tap “Add this week's photo”.</>
+            {beta ? <>Plant something in slot {slotId} in the <Link className="underline font-semibold text-teal-800" to="/tracker">Tracker</Link>, then add photos and measurements here.</>
                   : "The photo journal is a beta feature. Ask your Growing Minds admin to turn it on for you."}
           </p>
         </div>
@@ -125,6 +138,12 @@ export default function SlotJournal() {
             </div>
           )}
 
+          {!photos.length && (
+            <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-5 text-center text-sm text-gray-600">
+              📷 No photos of this planting yet. Open slot {slotId} in the <Link className="underline font-semibold text-teal-800" to="/tracker">Tracker</Link> and tap “Add this week's photo”.
+            </div>
+          )}
+          {photos.length > 0 && <>
           {/* Player */}
           <section aria-label="Timelapse" className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="relative bg-gray-900 aspect-[4/3]">
@@ -166,7 +185,7 @@ export default function SlotJournal() {
               {photos.map((p, i) => (
                 <li key={p.id} className={`bg-white border rounded-2xl overflow-hidden ${i === frame ? "border-teal-500 ring-2 ring-teal-200" : "border-gray-200"}`}>
                   <button type="button" onClick={() => { setPlaying(false); setFrame(i); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="block w-full aspect-[4/3] bg-gray-100">
-                    {urls[p.storage_path] && <img src={urls[p.storage_path]} alt={`${label(p)}`} className="w-full h-full object-cover" />}
+                    {urls[thumbOf(p)] && <img src={urls[thumbOf(p)]} alt={`${label(p)}`} loading="lazy" className="w-full h-full object-cover" />}
                   </button>
                   <div className="p-2 space-y-1">
                     <p className="text-xs font-bold text-gray-800">{label(p)}</p>
@@ -199,6 +218,9 @@ export default function SlotJournal() {
               ))}
             </ul>
           </section>
+          </>}
+
+          {beta && <GrowthPanel userId={user.id} slotId={slotId} planting={current} />}
         </>
       )}
     </div>

@@ -24,6 +24,8 @@ import LearnGuide from "./pages/LearnGuide";
 import JobCards from "./pages/JobCards";
 import TowerPrint from "./pages/TowerPrint";
 import SlotJournal from "./pages/SlotJournal";
+import Station from "./pages/Station";
+import MakerAddons from "./pages/MakerAddons";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -45,6 +47,9 @@ export default function App() {
       {/* PASSWORD RESET */}
       <Route path="/reset-password" element={<ResetPassword />} />
 
+      {/* STUDENT DATA STATION (beta): no login, uses a class code */}
+      <Route path="/station" element={<Station />} />
+
       {/* UNAPPROVED EDUCATORS */}
       <Route path="/pending" element={<Pending />} />
 
@@ -65,6 +70,7 @@ export default function App() {
         <Route path="tracker" element={<Tracker />} />
         <Route path="tracker/print" element={<TowerPrint />} />
         <Route path="tracker/journal/:slotId" element={<SlotJournal />} />
+        <Route path="tracker/maker" element={<MakerAddons />} />
         <Route path="harvest" element={<HarvestLog />} />
         <Route path="lessons" element={<LessonLab />} />
         <Route path="gardyn" element={<GardynDashboard />} />

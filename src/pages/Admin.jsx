@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import AdminPlants from "../components/admin/AdminPlants";
 import AdminProblems from "../components/admin/AdminProblems";
+import AdminImpact from "../components/admin/AdminImpact";
 import AdminEventCodes from "../components/admin/AdminEventCodes";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
@@ -44,7 +45,7 @@ export default function Admin() {
   const [remcFilter, setRemcFilter] = useState("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [params, setParams] = useSearchParams();
-  const tab = ["plants", "codes", "problems"].includes(params.get("tab")) ? params.get("tab") : "educators";
+  const tab = ["plants", "codes", "problems", "impact"].includes(params.get("tab")) ? params.get("tab") : "educators";
   const setTab = (t) => setParams(t === "educators" ? {} : { tab: t }, { replace: true });
   const [problemCount, setProblemCount] = useState(0);
   const [learnDone, setLearnDone] = useState({}); // user id -> guides finished
@@ -99,11 +100,11 @@ export default function Admin() {
     setBetaBusy(u.id);
     const { error } = on
       ? await supabase.from("beta_testers").delete().eq("user_id", u.id)
-      : await supabase.from("beta_testers").upsert({ user_id: u.id, features: ["photo_journal"] });
+      : await supabase.from("beta_testers").upsert({ user_id: u.id, features: ["photo_journal", "student_station"] });
     setBetaBusy(null);
     if (error) return showToast({ title: "Couldn't change beta access", description: error.message, type: "error" });
     setBetaIds((s) => { const n = new Set(s); on ? n.delete(u.id) : n.add(u.id); return n; });
-    showToast({ title: on ? `Beta off for ${displayName(u)}` : `📷 Photo journal beta on for ${displayName(u)}`, type: "success" });
+    showToast({ title: on ? `Beta off for ${displayName(u)}` : `🧪 Beta features on for ${displayName(u)}`, type: "success" });
   }
 
   // Badge on the Problems tab (quietly 0 until the problems log exists).
@@ -266,6 +267,7 @@ export default function Admin() {
           ["plants", "🌱 Plants", 0],
           ["codes", "🎟️ Codes", 0],
           ["problems", "⚠️ Problems", problemCount],
+          ["impact", "📈 Impact", 0],
         ].map(([id, label, n]) => (
           <button
             key={id}
@@ -289,6 +291,7 @@ export default function Admin() {
       {tab === "plants" && <AdminPlants />}
       {tab === "codes" && <AdminEventCodes users={users} />}
       {tab === "problems" && <AdminProblems users={users} onCountChange={setProblemCount} />}
+      {tab === "impact" && <AdminImpact />}
 
       {tab === "educators" && (<>
       {/* SEARCH + FILTER */}
@@ -452,7 +455,7 @@ export default function Admin() {
                       className={`mt-1 text-[11px] font-semibold rounded-full border px-2 py-0.5 disabled:opacity-50
                         ${betaIds.has(u.id) ? "bg-violet-100 border-violet-300 text-violet-900" : "bg-white border-gray-300 text-gray-600 hover:border-violet-400"}`}
                     >
-                      🧪 Photo journal beta: {betaIds.has(u.id) ? "on" : "off"}
+                      🧪 Beta (photo journal + student station): {betaIds.has(u.id) ? "on" : "off"}
                     </button>
                   )}
                 </div>

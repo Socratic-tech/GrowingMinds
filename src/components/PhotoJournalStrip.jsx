@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useToast } from "./ui/toast";
-import { addSlotPhoto, listSlotPhotos, signedUrls, plantDay, plantingKey } from "../utils/slotPhotos";
+import { addSlotPhoto, listSlotPhotos, signedUrls, plantDay, plantingKey, thumbOf } from "../utils/slotPhotos";
 import { todayLocal } from "../utils/date";
 
 // Photo journal (beta) inside a Tracker slot's editor: this planting's
@@ -19,7 +19,7 @@ export default function PhotoJournalStrip({ userId, slotId, slot, onChange }) {
     try {
       const rows = (await listSlotPhotos(userId, slotId)).filter((r) => plantingKey(r.plant_name, r.date_planted) === key);
       setPhotos(rows);
-      setUrls(await signedUrls(rows.slice(-6).map((r) => r.storage_path)));
+      setUrls(await signedUrls(rows.slice(-6).map(thumbOf)));
     } catch { /* feature not set up yet: show nothing */ }
   }
   useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [userId, slotId, key]);
@@ -49,9 +49,9 @@ export default function PhotoJournalStrip({ userId, slotId, slot, onChange }) {
         <h3 id={`pj-${slotId}`} className="text-xs font-bold uppercase tracking-wide text-violet-900">
           📷 Photo journal <span className="ml-1 rounded-full bg-violet-200 px-1.5 py-0.5 text-[9px]">Beta</span>
         </h3>
-        {photos.length > 0 && (
+        {planted && (
           <Link to={`/tracker/journal/${slotId}`} className="text-xs font-semibold text-violet-900 underline">
-            Timelapse ({photos.length}) →
+            Open journal{photos.length ? ` · ${photos.length} photo${photos.length === 1 ? "" : "s"}` : ""} →
           </Link>
         )}
       </div>
@@ -64,8 +64,8 @@ export default function PhotoJournalStrip({ userId, slotId, slot, onChange }) {
             <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Recent photos">
               {recent.map((p) => (
                 <li key={p.id} className="shrink-0 text-center">
-                  {urls[p.storage_path]
-                    ? <img src={urls[p.storage_path]} alt={`${slotId} ${p.plant_name || ""} on ${p.taken_on}`} className="w-16 h-16 object-cover rounded-lg border border-violet-200 bg-white" />
+                  {urls[thumbOf(p)]
+                    ? <img src={urls[thumbOf(p)]} alt={`${slotId} ${p.plant_name || ""} on ${p.taken_on}`} className="w-16 h-16 object-cover rounded-lg border border-violet-200 bg-white" />
                     : <div className="w-16 h-16 rounded-lg bg-violet-100" aria-hidden="true" />}
                   <span className="block text-[10px] font-semibold text-violet-900 mt-0.5">{plantDay(p) ? `Day ${plantDay(p)}` : p.taken_on}</span>
                 </li>

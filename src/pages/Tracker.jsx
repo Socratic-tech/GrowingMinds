@@ -11,6 +11,7 @@ import {
 import { Link } from "react-router-dom";
 import TowerView, { SUN_STRIPE } from "../components/TowerView";
 import PhotoJournalStrip from "../components/PhotoJournalStrip";
+import StationCard from "../components/StationCard";
 import { useBeta } from "../utils/beta";
 
 /* ─── Slot layout: see src/config/gardyn.js ─────────────── */
@@ -124,6 +125,7 @@ export default function Tracker() {
   const [editSlot,   setEditSlot]   = useState(null);
   const [viewMode,   setViewMode]   = useState("grid");
   const photoBeta = useBeta(user?.id, "photo_journal");
+  const stationBeta = useBeta(user?.id, "student_station");
   const [photoCounts, setPhotoCounts] = useState({}); // slot id -> photos of its current planting
 
   const loadPhotoCounts = useCallback(async () => {
@@ -356,7 +358,14 @@ export default function Tracker() {
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-800 underline">
               🖨️ Print slot stickers and a tower map to match your real tower
             </Link>
+            {(photoBeta || stationBeta) && (
+              <Link to="/tracker/maker" className="block text-xs font-semibold text-teal-800 underline">
+                🛠️ 3D-print add-ons: timelapse arm, slot tags, plant ruler
+              </Link>
+            )}
           </div>
+
+          {stationBeta && <StationCard userId={user.id} />}
 
           {/* ── Tower view (matches the physical tower) ────── */}
           {viewMode === "grid" && (
