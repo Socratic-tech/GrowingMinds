@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
+import { sendPasswordReset, friendlyPasswordError } from "../utils/password";
 import AdminPlants from "../components/admin/AdminPlants";
 import AdminProblems from "../components/admin/AdminProblems";
 import AdminImpact from "../components/admin/AdminImpact";
@@ -41,6 +42,7 @@ export default function Admin() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyIds, setBusyIds] = useState(() => new Set());
+  const [resetBusy, setResetBusy] = useState(null); // user id while a reset email is sending
   const [bulkApproving, setBulkApproving] = useState(false);
   const [query, setQuery] = useState("");
   const [remcFilter, setRemcFilter] = useState("");
@@ -184,6 +186,20 @@ export default function Admin() {
     const n = await setApproval([u.id], false);
     if (n) showToast({ title: `Access removed for ${displayName(u)}`, type: "success" });
     setBusyIds((s) => { const x = new Set(s); x.delete(u.id); return x; });
+  }
+
+  async function sendResetEmail(u) {
+    if (!u.email) {
+      showToast({ title: "No email on file", description: `${displayName(u)} has no email address saved.`, type: "error" });
+      return;
+    }
+    if (!window.confirm(`Send a password reset email to ${displayName(u)} (${u.email})?\n\nThey'll get a link to choose a new password. Their current password keeps working until they do. The link works once and expires in an hour.`)) return;
+    setResetBusy(u.id);
+    const { error } = await sendPasswordReset(u.email);
+    setResetBusy(null);
+    showToast(error
+      ? { title: "Couldn't send the reset email", description: friendlyPasswordError(error), type: "error" }
+      : { title: `Reset email sent to ${displayName(u)}`, description: `Ask them to check ${u.email}, including spam, and open the link soon.`, type: "success" });
   }
 
   async function approveMany(list) {
@@ -483,16 +499,29 @@ export default function Admin() {
                     </div>
                   )}
                 </div>
-                {!isSelf && !isAdminRow && (
-                  <button
-                    type="button"
-                    aria-label={`Remove access for ${displayName(u)}`}
-                    disabled={busyIds.has(u.id)}
-                    onClick={() => restrictOne(u)}
-                    className="shrink-0 text-xs font-semibold text-red-700 border border-red-200 rounded-xl px-3 py-2 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
-                  >
-                    Remove access
-                  </button>
+                {!isSelf && (
+                  <div className="shrink-0 flex flex-col items-stretch gap-2">
+                    <button
+                      type="button"
+                      aria-label={`Send a password reset email to ${displayName(u)}`}
+                      disabled={resetBusy === u.id || !u.email}
+                      onClick={() => sendResetEmail(u)}
+                      className="text-xs font-semibold text-teal-800 border border-teal-200 rounded-xl px-3 py-2 hover:bg-teal-50 focus-visible:ring-2 focus-visible:ring-teal-600 disabled:opacity-50"
+                    >
+                      {resetBusy === u.id ? "Sending…" : "🔑 Send reset email"}
+                    </button>
+                    {!isAdminRow && (
+                      <button
+                        type="button"
+                        aria-label={`Remove access for ${displayName(u)}`}
+                        disabled={busyIds.has(u.id)}
+                        onClick={() => restrictOne(u)}
+                        className="text-xs font-semibold text-red-700 border border-red-200 rounded-xl px-3 py-2 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
+                      >
+                        Remove access
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
+import { MIN_PASSWORD, friendlyPasswordError } from "../utils/password";
 
 // Supabase appends the recovery tokens to the redirect URL. With HashRouter
 // the link arrives as ".../#/reset-password#access_token=...&type=recovery"
@@ -87,8 +88,8 @@ export default function ResetPassword() {
       showToast({ title: "Passwords do not match", type: "error" });
       return;
     }
-    if (password.length < 6) {
-      showToast({ title: "Password too short", description: "Use at least 6 characters.", type: "error" });
+    if (password.length < MIN_PASSWORD) {
+      showToast({ title: "Password too short", description: `Use at least ${MIN_PASSWORD} characters.`, type: "error" });
       return;
     }
 
@@ -99,7 +100,7 @@ export default function ResetPassword() {
     if (error) {
       showToast({
         title: "Reset failed",
-        description: error.message,
+        description: friendlyPasswordError(error),
         type: "error",
       });
     } else {

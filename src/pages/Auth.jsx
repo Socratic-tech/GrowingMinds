@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { supabase, REDIRECT_URL } from "../supabase/client";
+import { MIN_PASSWORD, sendPasswordReset } from "../utils/password";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { PROFILE_FIELDS, SUPPORT_CONTACT } from "../config/app";
 
-const MIN_PASSWORD = 8;
 
 // Turn Supabase's terse auth errors into something a teacher can act on.
 function friendlyAuthError(err) {
@@ -92,9 +92,7 @@ export default function AuthPage() {
       showToast({ title: "Enter your email address first", type: "error" });
       return;
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: REDIRECT_URL.replace("/auth", "/reset-password"),
-    });
+    const { error } = await sendPasswordReset(email);
     if (error) {
       showToast({ title: "Reset failed", description: friendlyAuthError(error), type: "error" });
     } else {
