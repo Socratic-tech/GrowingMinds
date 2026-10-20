@@ -6,48 +6,14 @@ import NutritionPanel from "../components/NutritionPanel";
 import MyPlants from "../components/MyPlants";
 import { useAuth } from "../context/AuthProvider";
 import { useCustomPlants } from "../utils/customPlants";
-import { useSearchParams } from "react-router-dom";
-
-/* ─── Light zone display helpers ─────────────────────────── */
-const ZONE_META = {
-  "Yellow (Low)":  { label: "Yellow · Low",  dot: "bg-yellow-400", text: "text-yellow-800", bg: "bg-yellow-50 border-yellow-200" },
-  "Orange (Med)":  { label: "Orange · Med",  dot: "bg-orange-400", text: "text-orange-800", bg: "bg-orange-50 border-orange-200" },
-  "Red (High)":    { label: "Red · High",    dot: "bg-red-400",    text: "text-red-800",    bg: "bg-red-50   border-red-200"    },
-};
-
-// Categories match the Gardyn store (supabase_plants_gardyn_2026-09.sql).
-// Old names are kept in the icon map in case a row wasn't migrated.
-const CATEGORY_ICONS = {
-  Greens:             "🥬",
-  Herbs:              "🌿",
-  "Fruits & Veggies": "🍅",
-  Flowers:            "🌸",
-  Herb:     "🌿",
-  Fruiting: "🍅",
-  Flower:   "🌸",
-};
+import { Link, useSearchParams } from "react-router-dom";
+import { ZONE_META, CATEGORY_ICONS, SKILLS, skillOf, gardynUrl } from "../utils/plantMeta";
 
 const CATEGORIES = ["All", "Greens", "Herbs", "Fruits & Veggies", "Flowers"];
 
-const gardynUrl = (handle) => `https://mygardyn.com/products/${encodeURIComponent(handle)}`;
 const ZONES      = ["All", "Yellow (Low)", "Orange (Med)", "Red (High)"];
 
-/* ─── Skill level (Gardyn's "care level") ────────────────── */
-// Gardyn rates yCubes Beginner / Intermediate / Expert. We show Expert as
-// "Advanced" to match the Learn guide levels.
-const SKILLS = {
-  beginner:     { label: "Beginner",     icon: "🌱", badge: "bg-emerald-50 text-emerald-800 border-emerald-200" },
-  intermediate: { label: "Intermediate", icon: "🌿", badge: "bg-sky-50 text-sky-800 border-sky-200" },
-  advanced:     { label: "Advanced",     icon: "🌳", badge: "bg-purple-50 text-purple-800 border-purple-200" },
-};
 const SKILL_FILTERS = ["All", "beginner", "intermediate", "advanced"];
-function skillOf(p) {
-  const c = String(p.care_level || "").trim().toLowerCase();
-  if (c.startsWith("begin") || c === "easy") return "beginner";
-  if (c.startsWith("inter") || c === "medium") return "intermediate";
-  if (c.startsWith("expert") || c.startsWith("adv") || c === "hard") return "advanced";
-  return null;
-}
 
 /* ─── Sorting ────────────────────────────────────────────── */
 const SORTS = {
@@ -146,7 +112,7 @@ export default function PlantLibrary() {
       <div className="flex items-center gap-3">
         <div
           aria-hidden="true"
-          className="w-10 h-10 bg-teal-100 text-teal-700
+          className="shrink-0 w-10 h-10 bg-teal-100 text-teal-700
                      rounded-3xl lg:rounded-2xl flex items-center justify-center shadow"
         >
           🌱
@@ -161,6 +127,14 @@ export default function PlantLibrary() {
             </p>
           )}
         </div>
+        <Link
+          to="/plants/guide"
+          className="ml-auto shrink-0 inline-flex items-center gap-1.5 bg-white border border-teal-200
+                     text-teal-800 hover:border-teal-500 font-semibold text-xs lg:text-sm rounded-xl
+                     px-3 py-2 shadow-sm focus-visible:ring-2 focus-visible:ring-teal-700"
+        >
+          <span aria-hidden="true">🖨️</span> Print guide
+        </Link>
       </div>
 
       {loading ? (

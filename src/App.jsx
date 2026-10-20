@@ -23,6 +23,7 @@ import Learn from "./pages/Learn";
 import LearnGuide from "./pages/LearnGuide";
 import JobCards from "./pages/JobCards";
 import TowerPrint from "./pages/TowerPrint";
+import PlantGuide from "./pages/PlantGuide";
 import SlotJournal from "./pages/SlotJournal";
 import Station from "./pages/Station";
 import MakerAddons from "./pages/MakerAddons";
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="feed" element={<Feed />} />
         <Route path="library" element={<Library />} />
         <Route path="plants" element={<PlantLibrary />} />
+        <Route path="plants/guide" element={<PlantGuide />} />
         <Route path="maintenance" element={<Maintenance />} />
         <Route path="tracker" element={<Tracker />} />
         <Route path="tracker/print" element={<TowerPrint />} />
