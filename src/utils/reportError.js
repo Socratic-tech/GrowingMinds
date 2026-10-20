@@ -59,6 +59,12 @@ export function installGlobalErrorReporting() {
   if (installed || typeof window === "undefined") return;
   installed = true;
   window.addEventListener("error", (e) => {
+    // "Script error." with no file is what browsers report for errors in
+    // scripts from another origin: browser extensions and school-managed
+    // tools (content filters, read-aloud helpers) injected into the page.
+    // The app has no third-party scripts, so these aren't ours and can't
+    // be debugged: skip them.
+    if (!e.error && /^script error\.?$/i.test(String(e.message || "").trim()) && !e.filename) return;
     reportError("Page error", e.error || e.message, { source: clip(e.filename, 200), line: e.lineno });
   });
   window.addEventListener("unhandledrejection", (e) => {

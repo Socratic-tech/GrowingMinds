@@ -8,6 +8,8 @@ import { PROFILE_FIELDS } from "../config/app";
 // the welcome card, and your own Profile page.
 //
 // `tone="dark"` renders for the teal Pending background.
+const isNetworkError = (err) => /failed to fetch|networkerror|load failed/i.test(String(err?.message || ""));
+
 export default function ProfileDetailsForm({ onSaved, onCancel, tone = "light", submitLabel = "Save" }) {
   const { user, profile, refreshProfile } = useAuth();
   const { showToast } = useToast();
@@ -33,11 +35,14 @@ export default function ProfileDetailsForm({ onSaved, onCancel, tone = "light", 
     }
 
     setSaving(true);
-    const { data, error } = await supabase
-      .from("profiles")
-      .update(update)
-      .eq("id", user.id)
-      .select("id");
+    const save = () => supabase.from("profiles").update(update).eq("id", user.id).select("id");
+    let { data, error } = await save();
+    // "Failed to fetch" means the request never reached Supabase (school
+    // Wi-Fi blip, laptop waking up, free-tier cold start). Try once more.
+    if (isNetworkError(error)) {
+      await new Promise((r) => setTimeout(r, 1500));
+      ({ data, error } = await save());
+    }
     setSaving(false);
 
     if (error || !data?.length) {
@@ -46,7 +51,9 @@ export default function ProfileDetailsForm({ onSaved, onCancel, tone = "light", 
         title: "Couldn't save your details",
         description: missingColumn
           ? "The database hasn't been updated for this version yet. Please let your coordinator know."
-          : error?.message || "Please try again.",
+          : isNetworkError(error)
+            ? "We couldn't reach the server. Check your internet connection and try again."
+            : error?.message || "Please try again.",
         type: "error",
       });
       return;
