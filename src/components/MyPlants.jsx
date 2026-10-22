@@ -4,7 +4,7 @@ import { useToast } from "./ui/toast";
 import { LIGHT_ZONE_META } from "../config/gardyn";
 import { CUSTOM_CATEGORIES } from "../utils/customPlants";
 
-// "My plants" on the Plants tab (admin switch 'custom_plants'): a teacher's
+// "My plants" on the Plants tab (every approved teacher): a teacher's
 // own plants for their Tracker. Private to them; "Suggest for everyone"
 // sends one to the Growing Minds admins for the shared catalog.
 const EMPTY = { name: "", category: "Greens", light_zone: "", germination_days: "", harvest_days: "", notes: "" };

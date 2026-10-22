@@ -103,7 +103,6 @@ export default function Admin() {
   // Per-educator switches, all stored in beta_testers.features.
   const SWITCHES = [
     { id: "beta", label: "🧪 Beta", hint: "photo journal + student station", keys: ["photo_journal", "student_station"] },
-    { id: "custom", label: "🪴 Custom plants", hint: "on request", keys: ["custom_plants"] },
     { id: "towers", label: "🗼 Multiple towers", hint: "on request", keys: ["multi_tower"] },
   ];
   const hasSwitch = (u, sw) => sw.keys.every((k) => (betaIds?.get(u.id) || []).includes(k));
@@ -324,7 +323,7 @@ export default function Admin() {
 
       {tab === "educators" && betaSetupError && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900" role="status">
-          <b>Feature switches (Beta, Custom plants, Multiple towers) aren't set up yet.</b> In the Supabase SQL Editor, run
+          <b>Feature switches (Beta, Multiple towers) aren't set up yet.</b> In the Supabase SQL Editor, run
           {" "}<code>supabase_photo_journal_2026-10.sql</code>, then <code>supabase_beta_wave2_2026-10.sql</code>
           {" "}(and <code>supabase_towers_custom_plants_2026-10.sql</code> for towers and custom plants). They'll appear on each active educator.
           <span className="block text-xs mt-1 opacity-80">{betaSetupError}</span>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
 import { SLOT_IDS, LIGHT_ZONE_META, getSlotLightZone, getLightMatch } from "../config/gardyn";
 
-// Seed box (admin switch 'custom_plants'; supabase_seed_box_2026-10.sql):
+// Seed box (every approved teacher; supabase_seed_box_2026-10.sql):
 // the yCubes a teacher has on hand. "Plan my tower" places them in the
 // empty slots by light. One box per teacher, shared by all their towers.
 

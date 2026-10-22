@@ -5,7 +5,7 @@ import { LIGHT_ZONE_META, getSlotLightZone, getLightMatch, MATCH_COPY, MATCH_TEX
 import { planTower } from "../utils/seedBox";
 import { todayLocal } from "../utils/date";
 
-// "Plan my tower" (admin switch 'custom_plants'): fills the open slots from
+// "Plan my tower" (every approved teacher): fills the open slots from
 // the seed box by light, on the same tower picture as the Tracker. Tap two
 // slots to swap them; tap a waiting pod, then a slot, to place it.
 

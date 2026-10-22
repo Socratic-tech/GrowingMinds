@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabase/client";
-import { useBeta } from "./beta";
 
-// Custom plants (admin switch 'custom_plants'): a teacher's own plants,
-// private to them. They behave like catalog plants everywhere (picker,
+// Custom plants (every approved teacher, since Oct 2026): a teacher's own
+// plants, private to them. They behave like catalog plants everywhere (picker,
 // light match, harvest dates, coaching) and carry `custom: true`.
 // A custom plant whose name now matches a catalog plant is hidden, so an
 // approved suggestion never shows up twice.
@@ -11,7 +10,7 @@ import { useBeta } from "./beta";
 const norm = (s) => String(s || "").trim().toLowerCase();
 
 export function useCustomPlants(userId) {
-  const enabled = useBeta(userId, "custom_plants");
+  const enabled = Boolean(userId);
   const [rows, setRows] = useState([]);
   const reload = useCallback(async () => {
     if (!enabled || !userId) { setRows([]); return; }

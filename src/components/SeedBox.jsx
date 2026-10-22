@@ -5,7 +5,7 @@ import { useToast } from "./ui/toast";
 import { LIGHT_ZONE_META } from "../config/gardyn";
 import { CUSTOM_CATEGORIES } from "../utils/customPlants";
 
-// "My seed box" (admin switch 'custom_plants'): the yCubes a teacher has on
+// "My seed box" (every approved teacher): the yCubes a teacher has on
 // hand. One search box picks a catalog plant, or adds a new one as the
 // teacher's own plant right there. Used on the Plants tab and inside the
 // Tracker's "Plan my tower".
