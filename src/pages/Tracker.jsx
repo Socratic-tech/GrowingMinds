@@ -8,7 +8,7 @@ import {
   GARDYN_MODEL, GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, SLOT_COUNT, isValidSlotId,
   LIGHT_ZONE_META, getSlotLightZone, getLightMatch, MATCH_COPY, MATCH_TEXT, MATCH_BOX,
 } from "../config/gardyn";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import TowerView, { SUN_STRIPE } from "../components/TowerView";
 import PhotoJournalStrip from "../components/PhotoJournalStrip";
 import StationCard from "../components/StationCard";
@@ -16,6 +16,8 @@ import { useBeta } from "../utils/beta";
 import TowerSwitcher from "../components/TowerSwitcher";
 import { useTowers } from "../utils/towers";
 import { useCustomPlants, mergePlants } from "../utils/customPlants";
+import { useSeedBox, rankForSlot } from "../utils/seedBox";
+import TowerPlanner from "../components/TowerPlanner";
 
 /* ─── Slot layout: see src/config/gardyn.js ─────────────── */
 const COLUMNS = GARDYN_COLUMNS;
@@ -133,7 +135,11 @@ export default function Tracker() {
   const [editSlot,   setEditSlot]   = useState(null);
   const [viewMode,   setViewMode]   = useState("grid");
   const towers = useTowers(user?.id);
-  const { enabled: customOn, customPlants } = useCustomPlants(user?.id);
+  const { enabled: customOn, customPlants, reload: reloadCustom } = useCustomPlants(user?.id);
+  const seedBox = useSeedBox(user?.id, customOn);
+  const [params, setParams] = useSearchParams();
+  const planOpen = customOn && params.get("plan") === "1";
+  const setPlanOpen = (on) => setParams(on ? { plan: "1" } : {}, { replace: true });
   const photoBeta = useBeta(user?.id, "photo_journal");
   const stationBeta = useBeta(user?.id, "student_station");
   const [photoCounts, setPhotoCounts] = useState({}); // slot id -> photos of its current planting
@@ -234,9 +240,9 @@ export default function Tracker() {
   }
 
   /* ── Save slot edits ─────────────────────────────────────── */
-  async function saveSlot(slotId, updates, { recycled = false } = {}) {
+  async function saveSlot(slotId, updates, { recycled = false, keepOpen = false, fromSeedBox = null } = {}) {
     const slot = slots[slotId];
-    if (!slot?.id) return;
+    if (!slot?.id) return false;
 
     const { data, error } = await supabase
       .from("tracker_slots")
@@ -247,10 +253,38 @@ export default function Tracker() {
 
     if (error) {
       showToast({ title: "Failed to save slot", description: error.message, type: "error" });
+      return false;
+    }
+    setSlots((prev) => ({ ...prev, [slotId]: data }));
+    showToast({ title: recycled ? `♻️ Slot ${slotId} recycled and ready to plant` : `Slot ${slotId} updated`, type: "success" });
+    if (fromSeedBox) seedBox.consume({ [fromSeedBox]: 1 });
+    if (!keepOpen) closeEditor();
+    return true;
+  }
+
+  /* ── Plan my tower: plant many slots at once ─────────────── */
+  async function plantMany(plan, date) {
+    const ids = Object.keys(plan).filter((id) => slots[id]?.id);
+    const results = await Promise.all(ids.map((id) => supabase
+      .from("tracker_slots")
+      .update({ plant_name: plan[id], date_planted: date, status: "Germinating", student_team: null, observation_notes: null })
+      .eq("id", slots[id].id)
+      .select()
+      .single()));
+    const saved = {}, used = {};
+    results.forEach((r, i) => {
+      if (r.error || !r.data) return;
+      saved[ids[i]] = r.data;
+      used[plan[ids[i]]] = (used[plan[ids[i]]] || 0) + 1;
+    });
+    const n = Object.keys(saved).length;
+    setSlots((prev) => ({ ...prev, ...saved }));
+    await seedBox.consume(used);
+    if (n < ids.length) {
+      showToast({ title: `Planted ${n} of ${ids.length}`, description: results.find((r) => r.error)?.error.message, type: "error" });
     } else {
-      setSlots((prev) => ({ ...prev, [slotId]: data }));
-      showToast({ title: recycled ? `♻️ Slot ${slotId} recycled and ready to plant` : `Slot ${slotId} updated`, type: "success" });
-      closeEditor();
+      showToast({ title: `🌱 Planted ${n} pod${n === 1 ? "" : "s"}`, description: "Your tower map and harvest dates are updated.", type: "success" });
+      setPlanOpen(false);
     }
   }
 
@@ -378,6 +412,19 @@ export default function Tracker() {
               </Link>
             )}
           </div>
+
+          {customOn && (
+            <div className="bg-teal-50 border border-teal-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-teal-900 text-sm">🧺 Seed box: {seedBox.pods} yCube{seedBox.pods === 1 ? "" : "s"} · {ALL_SLOT_IDS.filter((id) => slots[id] && (!slots[id].plant_name || slots[id].status === "Empty")).length} open slots</p>
+                <p className="text-xs text-teal-900/80 mt-0.5">Add what you have on hand and the planner puts each pod where its light fits.</p>
+              </div>
+              <button onClick={() => setPlanOpen(true)}
+                className="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-xl text-sm font-semibold min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-700">
+                🗼 Plan my tower
+              </button>
+            </div>
+          )}
 
           {stationBeta && towers.ready && <StationCard key={towers.currentKey} userId={user.id} tower={towers} />}
 
@@ -530,6 +577,20 @@ export default function Tracker() {
               onClose={closeEditor}
               slots={slots}
               photoJournal={photoBeta ? { userId: user.id, onChange: loadPhotoCounts, tower: towers } : null}
+              seedBox={customOn && !seedBox.missing ? seedBox : null}
+            />
+          )}
+
+          {planOpen && (
+            <TowerPlanner
+              userId={user.id}
+              box={seedBox}
+              plants={allPlants}
+              plantMap={plantMap}
+              slots={slots}
+              onCustomAdded={reloadCustom}
+              onPlant={plantMany}
+              onClose={() => setPlanOpen(false)}
             />
           )}
         </>
@@ -560,7 +621,7 @@ function plantGroups(plants) {
 }
 
 /* ─── Slot Edit Panel ────────────────────────────────────── */
-function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose, photoJournal, customOn }) {
+function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose, photoJournal, customOn, seedBox }) {
   const [form, setForm] = useState({
     plant_name:        slot.plant_name || "",
     date_planted:      slot.date_planted || "",
@@ -570,6 +631,7 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose,
   });
   const [saving, setSaving] = useState(false);
   const [confirmRecycle, setConfirmRecycle] = useState(false);
+  const [fromBox, setFromBox] = useState(null); // seed box plant picked for this slot
   const hasPlanting = Boolean(slot.plant_name || slot.date_planted || slot.student_team || slot.observation_notes || (slot.status && slot.status !== "Empty"));
   const headingRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -619,19 +681,28 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose,
       student_team:      form.student_team || null,
       status:            form.status,
       observation_notes: form.observation_notes || null,
-    });
+    }, { fromSeedBox: fromBox && fromBox === form.plant_name ? fromBox : null });
     setSaving(false);
+  }
+
+  function pickFromBox(name) {
+    setFromBox(name);
+    setForm({ ...form, plant_name: name, date_planted: form.date_planted || todayLocal(), status: form.status === "Empty" ? "Germinating" : form.status });
   }
 
   // Recycle: the pod is done (harvested out, failed, or pulled). Clears the
   // slot so it's ready for a new yCube.
+  // With a seed box, the panel stays open to replant right away.
   async function handleRecycle() {
     setSaving(true);
-    await onSave(slotId, {
-      plant_name: null, date_planted: null, student_team: null,
-      status: "Empty", observation_notes: null,
-    }, { recycled: true });
+    const empty = { plant_name: null, date_planted: null, student_team: null, status: "Empty", observation_notes: null };
+    const keepOpen = Boolean(seedBox?.rows.length);
+    const ok = await onSave(slotId, empty, { recycled: true, keepOpen });
     setSaving(false);
+    if (ok && keepOpen) {
+      setForm({ plant_name: "", date_planted: "", student_team: "", status: "Empty", observation_notes: "" });
+      setConfirmRecycle(false);
+    }
   }
 
   return (
@@ -707,6 +778,27 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose,
             <a href="#/plants?mine=1" className="inline-block mt-1 text-xs font-semibold text-teal-800 underline">+ Add your own plant</a>
           )}
         </div>
+
+        {/* Replant from the seed box */}
+        {seedBox && seedBox.rows.length > 0 && !form.plant_name && (
+          <div className="border border-teal-200 bg-teal-50 rounded-2xl p-3 space-y-2">
+            <p className="text-xs font-bold text-teal-900">🧺 Plant from your seed box</p>
+            <div className="flex flex-wrap gap-1.5">
+              {rankForSlot(slotId, seedBox.rows, plantMap).map((r) => (
+                <button key={r.id} type="button" onClick={() => pickFromBox(r.plant_name)}
+                  title={MATCH_COPY[r.match]}
+                  className={`inline-flex items-center gap-1.5 text-xs font-semibold bg-white border rounded-full px-2.5 py-1 hover:bg-teal-100
+                              ${r.match === "best" ? "border-green-400" : r.match === "poor" ? "border-red-200 opacity-70" : "border-gray-300"}`}>
+                  <span className={`w-2 h-2 rounded-full ${LIGHT_ZONE_META[plantMap[r.plant_name]?.light_zone]?.dot || "bg-gray-300"}`} aria-hidden="true" />
+                  {r.plant_name} <span className="text-gray-500 font-normal">×{r.qty}</span>
+                  {r.match === "best" && <span className="sr-only">, {MATCH_COPY.best}</span>}
+                  {r.match === "best" && <span aria-hidden="true">✓</span>}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-teal-900/80">Best light match first (✓). Saving takes one pod out of your seed box.</p>
+          </div>
+        )}
 
         {/* Light match */}
         {selectedPlant && lightMatch !== "unknown" && (

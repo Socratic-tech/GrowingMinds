@@ -4,8 +4,10 @@ import { useToast } from "../components/ui/toast";
 import { PlantLibrarySkeleton } from "../components/ui/Skeleton";
 import NutritionPanel from "../components/NutritionPanel";
 import MyPlants from "../components/MyPlants";
+import SeedBox from "../components/SeedBox";
 import { useAuth } from "../context/AuthProvider";
-import { useCustomPlants } from "../utils/customPlants";
+import { useCustomPlants, mergePlants } from "../utils/customPlants";
+import { useSeedBox } from "../utils/seedBox";
 import { Link, useSearchParams } from "react-router-dom";
 import { ZONE_META, CATEGORY_ICONS, SKILLS, skillOf, gardynUrl } from "../utils/plantMeta";
 
@@ -41,6 +43,7 @@ export default function PlantLibrary() {
   const { showToast } = useToast();
   const { user } = useAuth();
   const { enabled: customOn, customPlants, reload: reloadCustom } = useCustomPlants(user?.id);
+  const seedBox = useSeedBox(user?.id, customOn);
   const [params] = useSearchParams();
 
   const [plants,  setPlants]  = useState([]);
@@ -141,6 +144,9 @@ export default function PlantLibrary() {
         <PlantLibrarySkeleton />
       ) : (
         <>
+          {customOn && (
+            <SeedBox userId={user.id} box={seedBox} plants={mergePlants(plants, customPlants)} onCustomAdded={reloadCustom} planLink />
+          )}
           {customOn && (
             <MyPlants userId={user.id} rows={customPlants} reload={reloadCustom} autoOpen={params.get("mine") === "1"}
               catalogNames={new Set(plants.map((p) => p.name.trim().toLowerCase()))} />
