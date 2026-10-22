@@ -16,7 +16,7 @@ $fn = 24;
 
 // Same light map as src/config/gardyn.js
 sun = [
-  ["A1","LOW"],["A2","MED"],["A3","HIGH"],["A4","MED"],["A5","HIGH"],["A6","MED"],["A7","HIGH"],["A8","MED"],
+  ["A1","MED"],["A2","MED"],["A3","HIGH"],["A4","MED"],["A5","HIGH"],["A6","MED"],["A7","HIGH"],["A8","LOW"],
   ["B1","LOW"],["B2","MED"],["B3","MED"],["B4","HIGH"],["B5","MED"],["B6","HIGH"],["B7","MED"],["B8","MED"]
 ];
 
