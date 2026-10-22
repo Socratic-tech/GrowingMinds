@@ -7,6 +7,9 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { getStatus as getMaintenanceStatus } from "./Maintenance";
 import { formatLocalDate } from "../utils/date";
 import { isValidSlotId } from "../config/gardyn";
+import CoachCards from "../components/learn/CoachCards";
+import TowerSwitcher from "../components/TowerSwitcher";
+import { useTowers } from "../utils/towers";
 
 const MAINT_LABEL = {
   "overdue":    "Overdue",
@@ -26,6 +29,7 @@ export default function GardynDashboard() {
   const navigate  = useNavigate();
 
   const { showToast } = useToast();
+  const tower = useTowers(user?.id);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -37,27 +41,29 @@ export default function GardynDashboard() {
   });
 
   const load = useCallback(async (isCancelled = () => false) => {
+    if (!tower.ready) return;
     setLoadError(null);
+    const s = tower.scope; // current tower only (no-op for one-tower teachers)
     const [slotRes, maintRes, harvestRes, weightRes] = await Promise.all([
-      supabase
+      s(supabase
         .from("tracker_slots")
         .select("slot_id, plant_name, status, date_planted, student_team")
-        .eq("user_id", user.id),
-      supabase
+        .eq("user_id", user.id)),
+      s(supabase
         .from("maintenance_tasks")
         .select("task_name, frequency_days, last_completed, owner")
-        .eq("user_id", user.id),
-      supabase
+        .eq("user_id", user.id)),
+      s(supabase
         .from("harvest_log")
         .select("harvest_date, plant_name, amount_grams, student_team")
-        .eq("user_id", user.id)
+        .eq("user_id", user.id))
         .order("harvest_date", { ascending: false })
         .limit(5),
       // All-time total: fetch only the weight column.
-      supabase
+      s(supabase
         .from("harvest_log")
         .select("amount_grams")
-        .eq("user_id", user.id),
+        .eq("user_id", user.id)),
     ]);
     if (isCancelled()) return;
 
@@ -76,7 +82,7 @@ export default function GardynDashboard() {
       allWeights:  weightRes.data  || [],
     });
     setLoading(false);
-  }, [user.id, showToast]);
+  }, [user.id, showToast, tower.ready, tower.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +140,8 @@ export default function GardynDashboard() {
         </div>
       </div>
 
+      <TowerSwitcher userId={user.id} />
+
       {loading ? (
         <DashboardSkeleton />
       ) : loadError ? (
@@ -151,6 +159,8 @@ export default function GardynDashboard() {
       ) : (
         <>
           {isNewTeacher && <GetStartedCard />}
+
+          {!isNewTeacher && <CoachCards userId={user.id} slots={slots} maintenance={data.maintenance} />}
 
           {/* ── Stat grid ──────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -314,8 +324,9 @@ export default function GardynDashboard() {
             <h2 className="text-xs uppercase tracking-widest font-bold text-gray-500 mb-2">
               Quick Links
             </h2>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {[
+                { icon: "🎓", label: "Learn",   path: "/learn"       },
                 { icon: "🌱", label: "Plants",  path: "/plants"      },
                 { icon: "🔬", label: "Lab",     path: "/lessons"     },
                 { icon: "💬", label: "Q & A",   path: "/qa"          },
@@ -344,6 +355,7 @@ export default function GardynDashboard() {
 /* ─── Get Started (brand-new teacher) ───────────────────── */
 function GetStartedCard() {
   const steps = [
+    { to: "/learn/place-ycubes", label: "Plan where each plant goes", hint: "A 5-minute guide that fills in your Tracker." },
     { to: "/tracker",     label: "Set up your tracker",            hint: "Add what's planted in each slot." },
     { to: "/maintenance", label: "Log your maintenance dates",     hint: "Enter when you last cleaned, dosed, and checked." },
     { to: "/plants",      label: "Browse the Plant Library",       hint: "See germination and harvest times." },

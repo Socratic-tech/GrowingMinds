@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
+import { sendPasswordReset, friendlyPasswordError } from "../utils/password";
+import AdminPlants from "../components/admin/AdminPlants";
+import AdminProblems from "../components/admin/AdminProblems";
+import AdminImpact from "../components/admin/AdminImpact";
+import AdminPlantSuggestions from "../components/admin/AdminPlantSuggestions";
+import AdminEventCodes from "../components/admin/AdminEventCodes";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { displayName } from "../utils/displayName";
 import { missingProfileFields } from "../config/app";
+import { TUTORIALS } from "../data/tutorials";
 
 // Statewide rollout means hundreds of educators across many districts.
 // This panel is built to scan and approve them quickly without mistakes:
@@ -35,10 +42,19 @@ export default function Admin() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyIds, setBusyIds] = useState(() => new Set());
+  const [resetBusy, setResetBusy] = useState(null); // user id while a reset email is sending
   const [bulkApproving, setBulkApproving] = useState(false);
   const [query, setQuery] = useState("");
   const [remcFilter, setRemcFilter] = useState("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const tab = ["plants", "codes", "problems", "impact"].includes(params.get("tab")) ? params.get("tab") : "educators";
+  const setTab = (t) => setParams(t === "educators" ? {} : { tab: t }, { replace: true });
+  const [problemCount, setProblemCount] = useState(0);
+  const [learnDone, setLearnDone] = useState({}); // user id -> guides finished
+  const [betaIds, setBetaIds] = useState(null); // Map user id -> feature switches; null = table not set up
+  const [betaBusy, setBetaBusy] = useState(null);
+  const [betaSetupError, setBetaSetupError] = useState(null);
   const reloadTimer = useRef(null);
 
   const loadUsers = useCallback(async () => {
@@ -59,6 +75,62 @@ export default function Admin() {
   useEffect(() => {
     if (!authLoading && profile?.role === "admin") loadUsers();
   }, [authLoading, profile?.role, loadUsers]);
+
+  // Learn guides finished per educator (quietly empty until the table exists).
+  useEffect(() => {
+    if (authLoading || profile?.role !== "admin") return;
+    supabase
+      .from("learn_progress")
+      .select("user_id")
+      .not("completed_at", "is", null)
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const m = {};
+        for (const r of data) m[r.user_id] = (m[r.user_id] || 0) + 1;
+        setLearnDone(m);
+      });
+  }, [authLoading, profile?.role]);
+
+  // Beta testers (quietly hidden until supabase_photo_journal_2026-10.sql is run).
+  useEffect(() => {
+    if (authLoading || profile?.role !== "admin") return;
+    supabase.from("beta_testers").select("user_id, features").then(({ data, error }) => {
+      if (!error && data) setBetaIds(new Map(data.map((r) => [r.user_id, r.features || []])));
+      else if (error) setBetaSetupError(error.message);
+    });
+  }, [authLoading, profile?.role]);
+
+  // Per-educator switches, all stored in beta_testers.features.
+  const SWITCHES = [
+    { id: "beta", label: "🧪 Beta", hint: "photo journal + student station", keys: ["photo_journal", "student_station"] },
+    { id: "custom", label: "🪴 Custom plants", hint: "on request", keys: ["custom_plants"] },
+    { id: "towers", label: "🗼 Multiple towers", hint: "on request", keys: ["multi_tower"] },
+  ];
+  const hasSwitch = (u, sw) => sw.keys.every((k) => (betaIds?.get(u.id) || []).includes(k));
+
+  async function toggleSwitch(u, sw) {
+    const cur = betaIds.get(u.id) || [];
+    const on = hasSwitch(u, sw);
+    const next = on ? cur.filter((k) => !sw.keys.includes(k)) : [...new Set([...cur, ...sw.keys])];
+    setBetaBusy(`${u.id}:${sw.id}`);
+    const { error } = next.length
+      ? await supabase.from("beta_testers").upsert({ user_id: u.id, features: next })
+      : await supabase.from("beta_testers").delete().eq("user_id", u.id);
+    setBetaBusy(null);
+    if (error) return showToast({ title: "Couldn't change that switch", description: error.message, type: "error" });
+    setBetaIds((m) => { const n = new Map(m); next.length ? n.set(u.id, next) : n.delete(u.id); return n; });
+    showToast({ title: `${sw.label} ${on ? "off" : "on"} for ${displayName(u)}`, type: "success" });
+  }
+
+  // Badge on the Problems tab (quietly 0 until the problems log exists).
+  useEffect(() => {
+    if (authLoading || profile?.role !== "admin") return;
+    supabase
+      .from("client_errors")
+      .select("id", { count: "exact", head: true })
+      .eq("resolved", false)
+      .then(({ count, error }) => { if (!error) setProblemCount(count || 0); });
+  }, [authLoading, profile?.role]);
 
   // Keep the pending list live as new educators sign up.
   useEffect(() => {
@@ -114,6 +186,20 @@ export default function Admin() {
     const n = await setApproval([u.id], false);
     if (n) showToast({ title: `Access removed for ${displayName(u)}`, type: "success" });
     setBusyIds((s) => { const x = new Set(s); x.delete(u.id); return x; });
+  }
+
+  async function sendResetEmail(u) {
+    if (!u.email) {
+      showToast({ title: "No email on file", description: `${displayName(u)} has no email address saved.`, type: "error" });
+      return;
+    }
+    if (!window.confirm(`Send a password reset email to ${displayName(u)} (${u.email})?\n\nThey'll get a link to choose a new password. Their current password keeps working until they do. The link works once and expires in an hour.`)) return;
+    setResetBusy(u.id);
+    const { error } = await sendPasswordReset(u.email);
+    setResetBusy(null);
+    showToast(error
+      ? { title: "Couldn't send the reset email", description: friendlyPasswordError(error), type: "error" }
+      : { title: `Reset email sent to ${displayName(u)}`, description: `Ask them to check ${u.email}, including spam, and open the link soon.`, type: "success" });
   }
 
   async function approveMany(list) {
@@ -193,16 +279,58 @@ export default function Admin() {
             </p>
           </div>
         </div>
-        <button
+        {tab === "educators" && <button
           type="button"
           onClick={exportCsv}
           disabled={!users.length}
           className="text-xs font-semibold text-teal-800 bg-white border border-teal-200 rounded-xl px-3 py-2 hover:bg-teal-50 disabled:opacity-50"
         >
           ⬇ Export CSV
-        </button>
+        </button>}
       </div>
 
+      {/* TABS */}
+      <div role="tablist" aria-label="Admin sections" className="flex gap-1 bg-gray-100 rounded-2xl p-1">
+        {[
+          ["educators", "👩‍🏫 Educators", totalPending],
+          ["plants", "🌱 Plants", 0],
+          ["codes", "🎟️ Codes", 0],
+          ["problems", "⚠️ Problems", problemCount],
+          ["impact", "📈 Impact", 0],
+        ].map(([id, label, n]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`flex-1 px-1 text-xs sm:text-sm font-semibold rounded-xl py-2.5 min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-600
+              ${tab === id ? "bg-white shadow text-teal-800" : "text-gray-600 hover:text-gray-800"}`}
+          >
+            {label}
+            {n > 0 && (
+              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold ${id === "problems" ? "bg-red-600 text-white" : "bg-amber-500 text-white"}`}>
+                {n}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "plants" && <><AdminPlantSuggestions users={users} /><AdminPlants /></>}
+      {tab === "codes" && <AdminEventCodes users={users} />}
+      {tab === "problems" && <AdminProblems users={users} onCountChange={setProblemCount} />}
+      {tab === "impact" && <AdminImpact />}
+
+      {tab === "educators" && betaSetupError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900" role="status">
+          <b>Feature switches (Beta, Custom plants, Multiple towers) aren't set up yet.</b> In the Supabase SQL Editor, run
+          {" "}<code>supabase_photo_journal_2026-10.sql</code>, then <code>supabase_beta_wave2_2026-10.sql</code>
+          {" "}(and <code>supabase_towers_custom_plants_2026-10.sql</code> for towers and custom plants). They'll appear on each active educator.
+          <span className="block text-xs mt-1 opacity-80">{betaSetupError}</span>
+        </div>
+      )}
+      {tab === "educators" && (<>
       {/* SEARCH + FILTER */}
       <div className="flex flex-col sm:flex-row gap-2">
         <label htmlFor="admin-search" className="sr-only">Search educators</label>
@@ -352,23 +480,55 @@ export default function Admin() {
                     {[u.school, u.district, u.remc].filter(Boolean).join(" · ") || u.email}
                   </p>
                   {(u.school || u.district) && <p className="text-xs text-gray-500 truncate">{u.email}</p>}
+                  {learnDone[u.id] > 0 && (
+                    <p className="text-[11px] text-teal-800 font-semibold">🎓 {learnDone[u.id]} of {TUTORIALS.length} Learn guides done</p>
+                  )}
+                  {betaIds && (
+                    <div className="mt-1 flex flex-wrap gap-1.5" role="group" aria-label={`Feature switches for ${displayName(u)}`}>
+                      {SWITCHES.map((sw) => {
+                        const on = hasSwitch(u, sw);
+                        return (
+                          <button key={sw.id} type="button" onClick={() => toggleSwitch(u, sw)} disabled={betaBusy === `${u.id}:${sw.id}`}
+                            aria-pressed={on} title={sw.hint}
+                            className={`text-[11px] font-semibold rounded-full border px-2 py-0.5 disabled:opacity-50
+                              ${on ? "bg-violet-100 border-violet-300 text-violet-900" : "bg-white border-gray-300 text-gray-600 hover:border-violet-400"}`}>
+                            {sw.label}: {on ? "on" : "off"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                {!isSelf && !isAdminRow && (
-                  <button
-                    type="button"
-                    aria-label={`Remove access for ${displayName(u)}`}
-                    disabled={busyIds.has(u.id)}
-                    onClick={() => restrictOne(u)}
-                    className="shrink-0 text-xs font-semibold text-red-700 border border-red-200 rounded-xl px-3 py-2 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
-                  >
-                    Remove access
-                  </button>
+                {!isSelf && (
+                  <div className="shrink-0 flex flex-col items-stretch gap-2">
+                    <button
+                      type="button"
+                      aria-label={`Send a password reset email to ${displayName(u)}`}
+                      disabled={resetBusy === u.id || !u.email}
+                      onClick={() => sendResetEmail(u)}
+                      className="text-xs font-semibold text-teal-800 border border-teal-200 rounded-xl px-3 py-2 hover:bg-teal-50 focus-visible:ring-2 focus-visible:ring-teal-600 disabled:opacity-50"
+                    >
+                      {resetBusy === u.id ? "Sending…" : "🔑 Send reset email"}
+                    </button>
+                    {!isAdminRow && (
+                      <button
+                        type="button"
+                        aria-label={`Remove access for ${displayName(u)}`}
+                        disabled={busyIds.has(u.id)}
+                        onClick={() => restrictOne(u)}
+                        className="text-xs font-semibold text-red-700 border border-red-200 rounded-xl px-3 py-2 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
+                      >
+                        Remove access
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );
           })}
         </section>
       )}
+      </>)}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { reportError } from "../utils/reportError";
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -14,6 +15,7 @@ export default class ErrorBoundary extends React.Component {
     // Always log to the console (even in production) so anyone who does
     // check devtools, or a future error-reporting integration, can see it.
     console.error("ErrorBoundary caught an error:", error, info);
+    reportError("App crashed", error, { component: String(info?.componentStack || "").slice(0, 600) });
   }
 
   handleRetry = () => {

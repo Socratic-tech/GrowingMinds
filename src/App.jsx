@@ -19,6 +19,14 @@ import Admin from "./pages/Admin";
 import Pending from "./pages/Pending";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
+import Learn from "./pages/Learn";
+import LearnGuide from "./pages/LearnGuide";
+import JobCards from "./pages/JobCards";
+import TowerPrint from "./pages/TowerPrint";
+import PlantGuide from "./pages/PlantGuide";
+import SlotJournal from "./pages/SlotJournal";
+import Station from "./pages/Station";
+import MakerAddons from "./pages/MakerAddons";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -40,6 +48,9 @@ export default function App() {
       {/* PASSWORD RESET */}
       <Route path="/reset-password" element={<ResetPassword />} />
 
+      {/* STUDENT DATA STATION (beta): no login, uses a class code */}
+      <Route path="/station" element={<Station />} />
+
       {/* UNAPPROVED EDUCATORS */}
       <Route path="/pending" element={<Pending />} />
 
@@ -56,11 +67,18 @@ export default function App() {
         <Route path="feed" element={<Feed />} />
         <Route path="library" element={<Library />} />
         <Route path="plants" element={<PlantLibrary />} />
+        <Route path="plants/guide" element={<PlantGuide />} />
         <Route path="maintenance" element={<Maintenance />} />
         <Route path="tracker" element={<Tracker />} />
+        <Route path="tracker/print" element={<TowerPrint />} />
+        <Route path="tracker/journal/:slotId" element={<SlotJournal />} />
+        <Route path="tracker/maker" element={<MakerAddons />} />
         <Route path="harvest" element={<HarvestLog />} />
         <Route path="lessons" element={<LessonLab />} />
         <Route path="gardyn" element={<GardynDashboard />} />
+        <Route path="learn" element={<Learn />} />
+        <Route path="learn/cards" element={<JobCards />} />
+        <Route path="learn/:id" element={<LearnGuide />} />
         <Route path="qa" element={<QA />} />
         <Route path="profile/:userId" element={<Profile />} />
 

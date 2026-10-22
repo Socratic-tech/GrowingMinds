@@ -1,8 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/client";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
+import { MIN_PASSWORD, friendlyPasswordError } from "../utils/password";
+
+// Supabase appends the recovery tokens to the redirect URL. With HashRouter
+// the link arrives as ".../#/reset-password#access_token=...&type=recovery"
+// (a second "#"), or with "?code=..." before the hash for PKCE links. Read
+// parameters from all of those places.
+function readLinkParams() {
+  const params = new URLSearchParams(window.location.search);
+  const hash = window.location.hash.slice(1); // "/reset-password#access_token=..."
+  const cut = hash.search(/[#?]/);
+  if (cut !== -1) {
+    new URLSearchParams(hash.slice(cut + 1)).forEach((v, k) => params.set(k, v));
+  }
+  return params;
+}
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -12,40 +27,58 @@ export default function ResetPassword() {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  // Manually verify the reset token on mount
+  // Verify the reset link once on mount (guarded so StrictMode's double
+  // effect in dev can't run it twice after the URL has been cleaned).
+  const ran = useRef(false);
   useEffect(() => {
-    const verifyToken = async () => {
-      const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
-      const accessToken = hashParams.get('access_token');
-      const type = hashParams.get('type');
+    if (ran.current) return;
+    ran.current = true;
 
-      if (type === 'recovery' && accessToken) {
-        const { error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: hashParams.get('refresh_token') || '',
-        });
-
-        if (error) {
-          showToast({
-            title: "Invalid reset link",
-            description: "This link may have expired. Please request a new one.",
-            type: "error",
-          });
-          setTimeout(() => navigate("/auth"), 2000);
-        }
-      } else {
-        showToast({
-          title: "No reset token found",
-          description: "Please use the link from your email.",
-          type: "error",
-        });
-        setTimeout(() => navigate("/auth"), 2000);
-      }
-
+    const fail = (title, description) => {
+      showToast({ title, description, type: "error" });
+      setTimeout(() => navigate("/auth"), 4000);
       setVerifying(false);
     };
 
-    verifyToken();
+    (async () => {
+      const params = readLinkParams();
+
+      // Supabase sends errors back on the link itself, e.g. otp_expired when
+      // the link is old, was already used, or a school email scanner
+      // "clicked" it first.
+      if (params.get("error") || params.get("error_code")) {
+        const expired = /expired|invalid/i.test(`${params.get("error_code")} ${params.get("error_description")}`);
+        return fail(
+          expired ? "This reset link has expired" : "Reset link problem",
+          expired
+            ? "Links work once and expire after an hour. Request a new one from the login page and open it right away."
+            : params.get("error_description") || "Please request a new link."
+        );
+      }
+
+      let error = null;
+      const code = params.get("code");
+      const accessToken = params.get("access_token");
+      if (code) {
+        // PKCE-style link: ?code=...
+        ({ error } = await supabase.auth.exchangeCodeForSession(code));
+      } else if (accessToken && params.get("type") === "recovery") {
+        ({ error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: params.get("refresh_token") || "",
+        }));
+      } else {
+        return fail("No reset token found", "Please open the link from your password reset email.");
+      }
+
+      if (error) {
+        return fail("Invalid reset link", "This link may have expired. Please request a new one.");
+      }
+
+      // Drop the tokens from the address bar and browser history.
+      window.history.replaceState(null, "", window.location.pathname + "#/reset-password");
+      setVerifying(false);
+    })();
   }, [navigate, showToast]);
 
   async function handleReset(e) {
@@ -53,6 +86,10 @@ export default function ResetPassword() {
 
     if (password !== confirm) {
       showToast({ title: "Passwords do not match", type: "error" });
+      return;
+    }
+    if (password.length < MIN_PASSWORD) {
+      showToast({ title: "Password too short", description: `Use at least ${MIN_PASSWORD} characters.`, type: "error" });
       return;
     }
 
@@ -63,7 +100,7 @@ export default function ResetPassword() {
     if (error) {
       showToast({
         title: "Reset failed",
-        description: error.message,
+        description: friendlyPasswordError(error),
         type: "error",
       });
     } else {

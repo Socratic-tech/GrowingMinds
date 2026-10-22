@@ -3,6 +3,8 @@ import { supabase } from "../supabase/client";
 import { useToast } from "../components/ui/toast";
 import { useAuth } from "../context/AuthProvider";
 import { Skeleton } from "../components/ui/Skeleton";
+import TowerSwitcher from "../components/TowerSwitcher";
+import { useTowers } from "../utils/towers";
 import {
   todayLocal, parseLocalDate, addDays, daysBetween, isValidDateString, formatLocalDate,
 } from "../utils/date";
@@ -64,37 +66,41 @@ function formatDate(iso) {
 // share one seed request per user instead of inserting twice.
 const seedInFlight = new Map();
 
-async function seedMissingTasks(userId, existingNames) {
+async function seedMissingTasks(userId, existingNames, tower) {
   const missing = DEFAULT_TASKS
     .filter((t) => !existingNames.has(t.task_name))
-    .map((t) => ({ ...t, user_id: userId }));
+    .map((t) => tower.stamp({ ...t, user_id: userId }));
   if (missing.length === 0) return null;
 
-  const { error } = await supabase
-    .from("maintenance_tasks")
-    .upsert(missing, { onConflict: "user_id,task_name", ignoreDuplicates: true });
-  if (!error) return null;
-  if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+  if (!tower.enabled) {
+    const { error } = await supabase
+      .from("maintenance_tasks")
+      .upsert(missing, { onConflict: "user_id,task_name", ignoreDuplicates: true });
+    if (!error) return null;
+    if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+  }
 
-  // Unique constraint not migrated yet: re-select, then insert only what's still missing.
-  const { data: current, error: selErr } = await supabase
+  // Multiple towers, or the unique rule isn't the classic one: select, then insert.
+  const { data: current, error: selErr } = await tower.scope(supabase
     .from("maintenance_tasks")
     .select("task_name")
-    .eq("user_id", userId);
+    .eq("user_id", userId));
   if (selErr) return selErr;
   const have = new Set((current || []).map((r) => r.task_name));
   const stillMissing = missing.filter((t) => !have.has(t.task_name));
   if (stillMissing.length === 0) return null;
   const { error: insErr } = await supabase.from("maintenance_tasks").insert(stillMissing);
+  if (insErr && /duplicate key/i.test(insErr.message || "")) return null;
   return insErr || null;
 }
 
-function seedOnce(userId, existingNames) {
-  if (!seedInFlight.has(userId)) {
-    const p = seedMissingTasks(userId, existingNames).finally(() => seedInFlight.delete(userId));
-    seedInFlight.set(userId, p);
+function seedOnce(userId, existingNames, tower) {
+  const k = `${userId}|${tower.currentKey}`;
+  if (!seedInFlight.has(k)) {
+    const p = seedMissingTasks(userId, existingNames, tower).finally(() => seedInFlight.delete(k));
+    seedInFlight.set(k, p);
   }
-  return seedInFlight.get(userId);
+  return seedInFlight.get(k);
 }
 
 function rowTime(r) {
@@ -116,6 +122,7 @@ function dedupeTasks(rows) {
 /* ─── Main component ─────────────────────────────────────── */
 export default function Maintenance() {
   const { user }     = useAuth();
+  const tower = useTowers(user?.id);
   const { showToast } = useToast();
 
   const [tasks,   setTasks]   = useState([]);
@@ -126,11 +133,12 @@ export default function Maintenance() {
 
   /* ── Load or seed tasks ──────────────────────────────────── */
   const loadTasks = useCallback(async (isCancelled = () => false) => {
+    if (!tower.ready) return;
     setLoadError(null);
-    const selectAll = () => supabase
+    const selectAll = () => tower.scope(supabase
       .from("maintenance_tasks")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", user.id))
       .order("sort_order", { ascending: true });
 
     let { data, error } = await selectAll();
@@ -145,7 +153,7 @@ export default function Maintenance() {
 
     if (!data || data.length === 0) {
       // First visit - seed default tasks for this user (guarded against double insert)
-      const seedErr = await seedOnce(user.id, new Set());
+      const seedErr = await seedOnce(user.id, new Set(), tower);
       if (isCancelled()) return;
       if (seedErr) {
         showToast({ title: "Could not create maintenance tasks", description: seedErr.message, type: "error" });
@@ -165,7 +173,7 @@ export default function Maintenance() {
 
     setTasks(dedupeTasks(data || []));
     setLoading(false);
-  }, [user.id, showToast]);
+  }, [user.id, showToast, tower.ready, tower.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -259,6 +267,8 @@ export default function Maintenance() {
           </p>
         </div>
       </div>
+
+      <TowerSwitcher userId={user.id} label="Tower (each has its own tank)" />
 
       {loading ? (
         <MaintenanceSkeleton />

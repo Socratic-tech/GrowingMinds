@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthProvider";
 import { useToast } from "../components/ui/toast";
 import { displayName, initials, affiliation } from "../utils/displayName";
 import ProfileDetailsForm from "../components/ProfileDetailsForm";
+import ChangePasswordForm from "../components/ChangePasswordForm";
 
 // Make a clickable card keyboard-accessible (Enter / Space activate it).
 function clickableProps(onActivate) {
@@ -39,6 +40,7 @@ export default function Profile() {
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     // Ignore responses for a previous userId if the route changes quickly.
@@ -216,6 +218,11 @@ export default function Profile() {
                 onSaved={(u) => { setProfile((p) => ({ ...p, ...u })); setEditingDetails(false); }}
                 onCancel={() => setEditingDetails(false)}
               />
+            ) : changingPassword ? (
+              <ChangePasswordForm
+                onDone={() => setChangingPassword(false)}
+                onCancel={() => setChangingPassword(false)}
+              />
             ) : (
               <div className="flex flex-wrap gap-2">
                 <button
@@ -224,6 +231,13 @@ export default function Profile() {
                   className="text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl px-4 py-2"
                 >
                   Edit name &amp; school
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChangingPassword(true)}
+                  className="text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 rounded-xl px-4 py-2"
+                >
+                  Change password
                 </button>
                 <button
                   type="button"

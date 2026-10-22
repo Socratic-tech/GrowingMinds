@@ -8,6 +8,16 @@ import {
   GARDYN_MODEL, GARDYN_COLUMNS, GARDYN_ROWS, SLOT_IDS, SLOT_COUNT, isValidSlotId,
   LIGHT_ZONE_META, getSlotLightZone, getLightMatch, MATCH_COPY, MATCH_TEXT, MATCH_BOX,
 } from "../config/gardyn";
+import { Link, useSearchParams } from "react-router-dom";
+import TowerView, { SUN_STRIPE } from "../components/TowerView";
+import PhotoJournalStrip from "../components/PhotoJournalStrip";
+import StationCard from "../components/StationCard";
+import { useBeta } from "../utils/beta";
+import TowerSwitcher from "../components/TowerSwitcher";
+import { useTowers } from "../utils/towers";
+import { useCustomPlants, mergePlants } from "../utils/customPlants";
+import { useSeedBox, rankForSlot } from "../utils/seedBox";
+import TowerPlanner from "../components/TowerPlanner";
 
 /* ─── Slot layout: see src/config/gardyn.js ─────────────── */
 const COLUMNS = GARDYN_COLUMNS;
@@ -46,35 +56,40 @@ function daysAgo(iso) {
 // share a single seed request per user.
 const seedInFlight = new Map();
 
-async function seedMissingSlots(userId, missingIds) {
-  const rows = missingIds.map((id) => ({ user_id: userId, slot_id: id, status: "Empty" }));
+async function seedMissingSlots(userId, missingIds, tower) {
+  const rows = missingIds.map((id) => tower.stamp({ user_id: userId, slot_id: id, status: "Empty" }));
   if (rows.length === 0) return null;
 
-  const { error } = await supabase
-    .from("tracker_slots")
-    .upsert(rows, { onConflict: "user_id,slot_id", ignoreDuplicates: true });
-  if (!error) return null;
-  if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+  // Teachers with one tower: the classic upsert. Multiple towers (or once the
+  // per-tower unique index replaces the old rule): select, then insert.
+  if (!tower.enabled) {
+    const { error } = await supabase
+      .from("tracker_slots")
+      .upsert(rows, { onConflict: "user_id,slot_id", ignoreDuplicates: true });
+    if (!error) return null;
+    if (!/no unique or exclusion constraint/i.test(error.message || "")) return error;
+  }
 
-  // Unique constraint not migrated yet: re-select, then insert only what's still missing.
-  const { data: current, error: selErr } = await supabase
+  const { data: current, error: selErr } = await tower.scope(supabase
     .from("tracker_slots")
     .select("slot_id")
-    .eq("user_id", userId);
+    .eq("user_id", userId));
   if (selErr) return selErr;
   const have = new Set((current || []).map((r) => r.slot_id));
   const stillMissing = rows.filter((r) => !have.has(r.slot_id));
   if (stillMissing.length === 0) return null;
   const { error: insErr } = await supabase.from("tracker_slots").insert(stillMissing);
+  if (insErr && /duplicate key/i.test(insErr.message || "")) return null; // another tab seeded first
   return insErr || null;
 }
 
-function seedOnce(userId, missingIds) {
-  if (!seedInFlight.has(userId)) {
-    const p = seedMissingSlots(userId, missingIds).finally(() => seedInFlight.delete(userId));
-    seedInFlight.set(userId, p);
+function seedOnce(userId, missingIds, tower) {
+  const k = `${userId}|${tower.currentKey}`;
+  if (!seedInFlight.has(k)) {
+    const p = seedMissingSlots(userId, missingIds, tower).finally(() => seedInFlight.delete(k));
+    seedInFlight.set(k, p);
   }
-  return seedInFlight.get(userId);
+  return seedInFlight.get(k);
 }
 
 function hasMissingSlots(bySlot) {
@@ -119,17 +134,39 @@ export default function Tracker() {
   const [loading,    setLoading]    = useState(true);
   const [editSlot,   setEditSlot]   = useState(null);
   const [viewMode,   setViewMode]   = useState("grid");
+  const towers = useTowers(user?.id);
+  const { enabled: customOn, customPlants, reload: reloadCustom } = useCustomPlants(user?.id);
+  const seedBox = useSeedBox(user?.id, customOn);
+  const [params, setParams] = useSearchParams();
+  const planOpen = customOn && params.get("plan") === "1";
+  const setPlanOpen = (on) => setParams(on ? { plan: "1" } : {}, { replace: true });
+  const photoBeta = useBeta(user?.id, "photo_journal");
+  const stationBeta = useBeta(user?.id, "student_station");
+  const [photoCounts, setPhotoCounts] = useState({}); // slot id -> photos of its current planting
+
+  const loadPhotoCounts = useCallback(async () => {
+    if (!photoBeta || !towers.ready) return;
+    const { data, error } = await towers.scope(supabase.from("slot_photos").select("slot_id, plant_name, date_planted").eq("user_id", user.id));
+    if (error || !data) return;
+    const counts = {};
+    for (const r of data) counts[`${r.slot_id}|${r.plant_name || ""}|${r.date_planted || ""}`] = (counts[`${r.slot_id}|${r.plant_name || ""}|${r.date_planted || ""}`] || 0) + 1;
+    setPhotoCounts(counts);
+  }, [photoBeta, user?.id, towers.ready, towers.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadPhotoCounts(); }, [loadPhotoCounts]);
+  const photosFor = (id, s) => photoCounts[`${id}|${s?.plant_name || ""}|${s?.date_planted || ""}`] || 0;
 
   const [loadError,  setLoadError]  = useState(null);
   const lastTriggerRef = useRef(null);
 
   /* ── Load plants + slots ─────────────────────────────────── */
   const loadData = useCallback(async (isCancelled = () => false) => {
+    if (!towers.ready) return;
     setLoadError(null);
-    const selectSlots = () => supabase.from("tracker_slots").select("*").eq("user_id", user.id);
+    const selectSlots = () => towers.scope(supabase.from("tracker_slots").select("*").eq("user_id", user.id));
 
     const [plantRes, slotRes] = await Promise.all([
-      supabase.from("plants").select("name, germination_days, harvest_days, category, light_zone").order("name"),
+      // "*" so this works before and after the store columns exist.
+      supabase.from("plants").select("*").order("name"),
       selectSlots(),
     ]);
     if (isCancelled()) return;
@@ -152,7 +189,7 @@ export default function Tracker() {
     const missingIds = ALL_SLOT_IDS.filter((id) => !have.has(id));
 
     if (missingIds.length > 0) {
-      const seedErr = await seedOnce(user.id, missingIds);
+      const seedErr = await seedOnce(user.id, missingIds, towers);
       if (isCancelled()) return;
       if (seedErr) {
         showToast({ title: "Couldn't set up your slots", description: seedErr.message, type: "error" });
@@ -178,7 +215,7 @@ export default function Tracker() {
     }
     setSlots(bySlot);
     setLoading(false);
-  }, [user.id, showToast]);
+  }, [user.id, showToast, towers.ready, towers.currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -203,9 +240,9 @@ export default function Tracker() {
   }
 
   /* ── Save slot edits ─────────────────────────────────────── */
-  async function saveSlot(slotId, updates) {
+  async function saveSlot(slotId, updates, { recycled = false, keepOpen = false, fromSeedBox = null } = {}) {
     const slot = slots[slotId];
-    if (!slot?.id) return;
+    if (!slot?.id) return false;
 
     const { data, error } = await supabase
       .from("tracker_slots")
@@ -216,10 +253,38 @@ export default function Tracker() {
 
     if (error) {
       showToast({ title: "Failed to save slot", description: error.message, type: "error" });
+      return false;
+    }
+    setSlots((prev) => ({ ...prev, [slotId]: data }));
+    showToast({ title: recycled ? `♻️ Slot ${slotId} recycled and ready to plant` : `Slot ${slotId} updated`, type: "success" });
+    if (fromSeedBox) seedBox.consume({ [fromSeedBox]: 1 });
+    if (!keepOpen) closeEditor();
+    return true;
+  }
+
+  /* ── Plan my tower: plant many slots at once ─────────────── */
+  async function plantMany(plan, date) {
+    const ids = Object.keys(plan).filter((id) => slots[id]?.id);
+    const results = await Promise.all(ids.map((id) => supabase
+      .from("tracker_slots")
+      .update({ plant_name: plan[id], date_planted: date, status: "Germinating", student_team: null, observation_notes: null })
+      .eq("id", slots[id].id)
+      .select()
+      .single()));
+    const saved = {}, used = {};
+    results.forEach((r, i) => {
+      if (r.error || !r.data) return;
+      saved[ids[i]] = r.data;
+      used[plan[ids[i]]] = (used[plan[ids[i]]] || 0) + 1;
+    });
+    const n = Object.keys(saved).length;
+    setSlots((prev) => ({ ...prev, ...saved }));
+    await seedBox.consume(used);
+    if (n < ids.length) {
+      showToast({ title: `Planted ${n} of ${ids.length}`, description: results.find((r) => r.error)?.error.message, type: "error" });
     } else {
-      setSlots((prev) => ({ ...prev, [slotId]: data }));
-      showToast({ title: `Slot ${slotId} updated`, type: "success" });
-      closeEditor();
+      showToast({ title: `🌱 Planted ${n} pod${n === 1 ? "" : "s"}`, description: "Your tower map and harvest dates are updated.", type: "success" });
+      setPlanOpen(false);
     }
   }
 
@@ -237,7 +302,8 @@ export default function Tracker() {
   }, {});
 
   /* ── Plant lookup map ────────────────────────────────────── */
-  const plantMap = plants.reduce((m, p) => { m[p.name] = p; return m; }, {});
+  const allPlants = mergePlants(plants, customPlants);
+  const plantMap = allPlants.reduce((m, p) => { m[p.name] = p; return m; }, {});
 
   return (
     <div className="space-y-6">
@@ -264,12 +330,13 @@ export default function Tracker() {
 
         {/* View toggle */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-          {[["grid","⊞"],["list","≡"]].map(([mode, icon]) => (
+          {[["grid","🗼", "Tower view"],["list","≡", "List view"]].map(([mode, icon, label]) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
               aria-pressed={viewMode === mode}
-              aria-label={`${mode} view`}
+              aria-label={label}
+              title={label}
               className={`w-8 h-8 rounded-lg text-sm flex items-center justify-center
                           transition-colors focus-visible:ring-2 focus-visible:ring-teal-700
                           ${viewMode === mode
@@ -281,6 +348,8 @@ export default function Tracker() {
           ))}
         </div>
       </div>
+
+      <TowerSwitcher userId={user.id} manage />
 
       {loading ? (
         <TrackerSkeleton />
@@ -333,84 +402,91 @@ export default function Tracker() {
               Each slot shows how much light it gets (row 1 is the top of the column). When you pick a plant,
               the tracker checks it against the slot and suggests better open slots.
             </p>
+            <Link to="/tracker/print"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-800 underline">
+              🖨️ Print slot stickers and a tower map to match your real tower
+            </Link>
+            {(photoBeta || stationBeta) && (
+              <Link to="/tracker/maker" className="block text-xs font-semibold text-teal-800 underline">
+                🛠️ 3D-print add-ons: timelapse arm, slot tags, plant ruler
+              </Link>
+            )}
           </div>
 
-          {/* ── Grid view ──────────────────────────────────── */}
+          {customOn && (
+            <div className="bg-teal-50 border border-teal-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-teal-900 text-sm">🧺 Seed box: {seedBox.pods} yCube{seedBox.pods === 1 ? "" : "s"} · {ALL_SLOT_IDS.filter((id) => slots[id] && (!slots[id].plant_name || slots[id].status === "Empty")).length} open slots</p>
+                <p className="text-xs text-teal-900/80 mt-0.5">Add what you have on hand and the planner puts each pod where its light fits.</p>
+              </div>
+              <button onClick={() => setPlanOpen(true)}
+                className="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2 rounded-xl text-sm font-semibold min-h-[44px] focus-visible:ring-2 focus-visible:ring-teal-700">
+                🗼 Plan my tower
+              </button>
+            </div>
+          )}
+
+          {stationBeta && towers.ready && <StationCard key={towers.currentKey} userId={user.id} tower={towers} />}
+
+          {/* ── Tower view (matches the physical tower) ────── */}
           {viewMode === "grid" && (
-            <div className="space-y-4">
-              {COLUMNS.map((col) => (
-                <div key={col}>
-                  <h2 className="text-xs uppercase tracking-widest font-bold text-gray-500 mb-2">
-                    Column {col}
-                  </h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {ROWS.map((row) => {
-                      const id    = `${col}${row}`;
-                      const slot  = slots[id];
-                      const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
-                      const plant = plantMap[slot?.plant_name];
-                      const zoneMeta = LIGHT_ZONE_META[getSlotLightZone(id)];
-                      const match = plant ? getLightMatch(getSlotLightZone(id), plant.light_zone) : "unknown";
-
-                      const harvestEta = plant && slot?.date_planted
-                        ? etaDate(slot.date_planted, plant.harvest_days)
-                        : null;
-
-                      return (
-                        <button
-                          key={id}
-                          onClick={(e) => openEditor(id, e.currentTarget)}
-                          disabled={!slot}
-                          aria-haspopup="dialog"
-                          aria-label={`Slot ${id}: ${slot?.status || "Empty"}${slot?.plant_name ? ` · ${slot.plant_name}` : ""} · ${zoneMeta.label}${plant ? ` · ${MATCH_COPY[match]}` : ""}`}
-                          className={`text-left p-3 rounded-2xl border transition-all
-                                      hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-teal-700
-                                      ${style.bg} ${style.border}
-                                      ${editSlot === id ? "ring-2 ring-teal-400 shadow-md" : match === "poor" ? "ring-2 ring-red-300" : ""}`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-bold text-gray-500">{id}</span>
-                            <span className={`w-2 h-2 rounded-full ${style.dot}`} aria-hidden="true" />
-                          </div>
-
-                          <p className={`text-xs font-semibold leading-tight ${style.text} line-clamp-2`}>
-                            {slot?.plant_name || "Empty"}
-                          </p>
-
-                          {slot?.status && slot.status !== "Empty" && (
-                            <p className={`text-[10px] font-bold uppercase tracking-wide mt-0.5 ${style.text}`}>
-                              {slot.status}
-                            </p>
-                          )}
-
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded-full border text-[9px] font-bold uppercase tracking-wide ${zoneMeta.badge}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${zoneMeta.dot}`} aria-hidden="true" />
-                            {zoneMeta.short} sun
+            <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-5 shadow-sm">
+              <TowerView
+                renderSlot={(id, zoneMeta) => {
+                  const slot  = slots[id];
+                  const style = STATUS_STYLE[slot?.status] || STATUS_STYLE["Empty"];
+                  const plant = plantMap[slot?.plant_name];
+                  const zone  = getSlotLightZone(id);
+                  const match = plant ? getLightMatch(zone, plant.light_zone) : "unknown";
+                  const empty = !slot?.plant_name || slot?.status === "Empty";
+                  const harvestEta = plant && slot?.date_planted ? etaDate(slot.date_planted, plant.harvest_days) : null;
+                  return (
+                    <button
+                      onClick={(e) => openEditor(id, e.currentTarget)}
+                      disabled={!slot}
+                      aria-haspopup="dialog"
+                      aria-label={`Slot ${id}, ${id.slice(0, 1) === COLUMNS[0] ? "left" : "right"} column, row ${id.slice(1)} from the top: ${empty ? "Empty" : `${slot.plant_name}, ${slot.status}`} · ${zoneMeta.label}${plant ? ` · ${MATCH_COPY[match]}` : ""}`}
+                      className={`w-full h-full min-h-[58px] text-left flex overflow-hidden rounded-xl border transition-all
+                                  hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-teal-700
+                                  ${empty ? "bg-white border-dashed border-gray-300" : `${style.bg} ${style.border}`}
+                                  ${editSlot === id ? "ring-2 ring-teal-500 shadow-md" : match === "poor" ? "ring-2 ring-red-300" : ""}`}
+                    >
+                      <span className={`w-1.5 shrink-0 ${SUN_STRIPE[zone]}`} title={zoneMeta.label} aria-hidden="true" />
+                      <span className="flex-1 min-w-0 px-2 py-1.5">
+                        <span className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-bold text-gray-500">{id}</span>
+                          <span className={`text-[9px] font-bold uppercase ${zoneMeta.text}`}>{zoneMeta.short} sun</span>
+                        </span>
+                        <span className={`block text-xs sm:text-sm font-semibold leading-tight line-clamp-2 ${empty ? "text-gray-400" : style.text}`}>
+                          {empty ? "Empty" : slot.plant_name}
+                        </span>
+                        {!empty && (
+                          <span className="flex items-center gap-1 mt-0.5">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} aria-hidden="true" />
+                            <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wide truncate ${style.text}`}>{slot.status}</span>
+                            {match === "poor" && <span className="text-[10px]" title={MATCH_COPY.poor} aria-hidden="true">⚠️</span>}
                           </span>
-
-                          {plant && match !== "unknown" && (
-                            <p className={`text-[9px] mt-1 font-bold uppercase tracking-wide ${MATCH_TEXT[match]}`}>
-                              {MATCH_COPY[match]}
-                            </p>
-                          )}
-
-                          {harvestEta && (
-                            <p className="text-[10px] text-gray-500 mt-1">
-                              🌾 {formatDate(harvestEta)}
-                            </p>
-                          )}
-
-                          {slot?.student_team && (
-                            <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-                              👤 {slot.student_team}
-                            </p>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                        )}
+                        {photoBeta && !empty && photosFor(id, slot) > 0 && (
+                          <span className="block text-[10px] font-semibold text-violet-800 mt-0.5">📷 {photosFor(id, slot)}</span>
+                        )}
+                        {(harvestEta || slot?.student_team) && (
+                          <span className="hidden sm:block text-[10px] text-gray-500 mt-0.5 truncate">
+                            {harvestEta && `🌾 ${formatDate(harvestEta)}`}{harvestEta && slot?.student_team && " · "}{slot?.student_team && `👤 ${slot.student_team}`}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                }}
+              />
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-3 text-[11px] text-gray-600">
+                {Object.entries(LIGHT_ZONE_META).map(([z, m]) => (
+                  <span key={z} className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-4 rounded-sm ${SUN_STRIPE[z]}`} aria-hidden="true" /> {m.label}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
@@ -494,11 +570,27 @@ export default function Tracker() {
               key={editSlot}
               slotId={editSlot}
               slot={slots[editSlot]}
-              plants={plants}
+              plants={allPlants}
+              customOn={customOn}
               plantMap={plantMap}
               onSave={saveSlot}
               onClose={closeEditor}
               slots={slots}
+              photoJournal={photoBeta ? { userId: user.id, onChange: loadPhotoCounts, tower: towers } : null}
+              seedBox={customOn && !seedBox.missing ? seedBox : null}
+            />
+          )}
+
+          {planOpen && (
+            <TowerPlanner
+              userId={user.id}
+              box={seedBox}
+              plants={allPlants}
+              plantMap={plantMap}
+              slots={slots}
+              onCustomAdded={reloadCustom}
+              onPlant={plantMany}
+              onClose={() => setPlanOpen(false)}
             />
           )}
         </>
@@ -507,8 +599,29 @@ export default function Tracker() {
   );
 }
 
+/* ─── Plant picker groups ───────────────────────────────── */
+// Store yCubes grouped like the Gardyn store. Plants Gardyn no longer
+// sells stay pickable (teachers stock up before a plant leaves the store)
+// and are listed last, labeled.
+const PICKER_ORDER = ["Greens", "Herbs", "Fruits & Veggies", "Flowers"];
+function plantGroups(plants) {
+  const groups = new Map();
+  const retired = [], mine = [];
+  for (const p of plants) {
+    if (p.custom) { mine.push(p); continue; }
+    if (p.in_gardyn_store === false) { retired.push(p); continue; }
+    const g = PICKER_ORDER.includes(p.category) ? p.category : "Other plants";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(p);
+  }
+  const out = [...PICKER_ORDER, "Other plants"].filter((g) => groups.has(g)).map((g) => [g, groups.get(g)]);
+  if (mine.length) out.unshift(["My plants", mine]);
+  if (retired.length) out.push(["No longer sold by Gardyn", retired]);
+  return out;
+}
+
 /* ─── Slot Edit Panel ────────────────────────────────────── */
-function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose }) {
+function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose, photoJournal, customOn, seedBox }) {
   const [form, setForm] = useState({
     plant_name:        slot.plant_name || "",
     date_planted:      slot.date_planted || "",
@@ -517,6 +630,9 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
     observation_notes: slot.observation_notes || "",
   });
   const [saving, setSaving] = useState(false);
+  const [confirmRecycle, setConfirmRecycle] = useState(false);
+  const [fromBox, setFromBox] = useState(null); // seed box plant picked for this slot
+  const hasPlanting = Boolean(slot.plant_name || slot.date_planted || slot.student_team || slot.observation_notes || (slot.status && slot.status !== "Empty"));
   const headingRef = useRef(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -565,8 +681,28 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
       student_team:      form.student_team || null,
       status:            form.status,
       observation_notes: form.observation_notes || null,
-    });
+    }, { fromSeedBox: fromBox && fromBox === form.plant_name ? fromBox : null });
     setSaving(false);
+  }
+
+  function pickFromBox(name) {
+    setFromBox(name);
+    setForm({ ...form, plant_name: name, date_planted: form.date_planted || todayLocal(), status: form.status === "Empty" ? "Germinating" : form.status });
+  }
+
+  // Recycle: the pod is done (harvested out, failed, or pulled). Clears the
+  // slot so it's ready for a new yCube.
+  // With a seed box, the panel stays open to replant right away.
+  async function handleRecycle() {
+    setSaving(true);
+    const empty = { plant_name: null, date_planted: null, student_team: null, status: "Empty", observation_notes: null };
+    const keepOpen = Boolean(seedBox?.rows.length);
+    const ok = await onSave(slotId, empty, { recycled: true, keepOpen });
+    setSaving(false);
+    if (ok && keepOpen) {
+      setForm({ plant_name: "", date_planted: "", student_team: "", status: "Empty", observation_notes: "" });
+      setConfirmRecycle(false);
+    }
   }
 
   return (
@@ -628,13 +764,41 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
                        shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700"
           >
             <option value="">— Empty —</option>
-            {plants.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}
-              </option>
+            {plantGroups(plants).map(([group, list]) => (
+              <optgroup key={group} label={group}>
+                {list.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}{p.in_gardyn_store === false ? " · discontinued" : ""}{p.custom ? " · custom" : ""}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
+          {customOn && (
+            <a href="#/plants?mine=1" className="inline-block mt-1 text-xs font-semibold text-teal-800 underline">+ Add your own plant</a>
+          )}
         </div>
+
+        {/* Replant from the seed box */}
+        {seedBox && seedBox.rows.length > 0 && !form.plant_name && (
+          <div className="border border-teal-200 bg-teal-50 rounded-2xl p-3 space-y-2">
+            <p className="text-xs font-bold text-teal-900">🧺 Plant from your seed box</p>
+            <div className="flex flex-wrap gap-1.5">
+              {rankForSlot(slotId, seedBox.rows, plantMap).map((r) => (
+                <button key={r.id} type="button" onClick={() => pickFromBox(r.plant_name)}
+                  title={MATCH_COPY[r.match]}
+                  className={`inline-flex items-center gap-1.5 text-xs font-semibold bg-white border rounded-full px-2.5 py-1 hover:bg-teal-100
+                              ${r.match === "best" ? "border-green-400" : r.match === "poor" ? "border-red-200 opacity-70" : "border-gray-300"}`}>
+                  <span className={`w-2 h-2 rounded-full ${LIGHT_ZONE_META[plantMap[r.plant_name]?.light_zone]?.dot || "bg-gray-300"}`} aria-hidden="true" />
+                  {r.plant_name} <span className="text-gray-500 font-normal">×{r.qty}</span>
+                  {r.match === "best" && <span className="sr-only">, {MATCH_COPY.best}</span>}
+                  {r.match === "best" && <span aria-hidden="true">✓</span>}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-teal-900/80">Best light match first (✓). Saving takes one pod out of your seed box.</p>
+          </div>
+        )}
 
         {/* Light match */}
         {selectedPlant && lightMatch !== "unknown" && (
@@ -733,6 +897,44 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose 
                        shadow-inner focus-visible:ring-2 focus-visible:ring-teal-700 resize-none"
           />
         </div>
+
+        {/* Photo journal (beta) */}
+        {photoJournal && <PhotoJournalStrip userId={photoJournal.userId} slotId={slotId} slot={slot} onChange={photoJournal.onChange} tower={photoJournal.tower} />}
+
+        {/* Recycle */}
+        {hasPlanting && (
+          <div className="border border-gray-200 rounded-2xl p-3 bg-gray-50">
+            {!confirmRecycle ? (
+              <button
+                type="button"
+                onClick={() => setConfirmRecycle(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-emerald-600
+                           text-emerald-800 bg-white font-semibold text-sm hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-teal-700"
+              >
+                ♻️ Recycle this pod · empty the slot
+              </button>
+            ) : (
+              <div className="space-y-2" role="group" aria-label={`Recycle slot ${slotId}`}>
+                <p className="text-sm text-gray-800">
+                  <b>Empty slot {slotId}?</b> This clears the plant{slot.plant_name ? ` (${slot.plant_name})` : ""}, planted date, team and notes so it's ready for a new yCube.
+                </p>
+                <p className="text-xs text-gray-600">
+                  Harvest first? <a href="#/harvest" className="underline font-semibold text-teal-800">Log it in the Harvest Log</a> before you recycle.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleRecycle} disabled={saving}
+                    className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50">
+                    {saving ? "Recycling…" : "Yes, recycle it"}
+                  </button>
+                  <button type="button" onClick={() => setConfirmRecycle(false)}
+                    className="px-4 py-2.5 border border-gray-300 bg-white text-gray-700 rounded-xl text-sm">
+                    Keep it
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex gap-2 pt-1">

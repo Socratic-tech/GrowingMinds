@@ -18,7 +18,7 @@ export function getNavItems(isAdmin) {
 
 // Gardyn sub-pages (tracker, maintenance, ...) highlight the Gardyn tab, and
 // "/" is the Feed.
-const GARDYN_PATHS = ["/gardyn", "/tracker", "/maintenance", "/harvest", "/plants", "/lessons"];
+const GARDYN_PATHS = ["/gardyn", "/tracker", "/maintenance", "/harvest", "/plants", "/lessons", "/learn"];
 
 export function isNavActive(itemPath, pathname) {
   if (itemPath === "/feed") return pathname === "/" || pathname === "/feed";
