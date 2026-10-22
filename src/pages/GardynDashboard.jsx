@@ -10,6 +10,9 @@ import { isValidSlotId } from "../config/gardyn";
 import CoachCards from "../components/learn/CoachCards";
 import TowerSwitcher from "../components/TowerSwitcher";
 import { useTowers } from "../utils/towers";
+import TowerGlance from "../components/TowerGlance";
+import { useCustomPlants, mergePlants } from "../utils/customPlants";
+import { useSeedBox } from "../utils/seedBox";
 
 const MAINT_LABEL = {
   "overdue":    "Overdue",
@@ -30,6 +33,13 @@ export default function GardynDashboard() {
 
   const { showToast } = useToast();
   const tower = useTowers(user?.id);
+  const { enabled: customOn, customPlants } = useCustomPlants(user?.id);
+  const seedBox = useSeedBox(user?.id, customOn);
+  const [plants, setPlants] = useState([]);
+  useEffect(() => {
+    supabase.from("plants").select("name, light_zone, harvest_days").then(({ data }) => setPlants(data || []));
+  }, []);
+  const plantMap = Object.fromEntries(mergePlants(plants, customPlants).map((p) => [p.name, p]));
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -159,6 +169,8 @@ export default function GardynDashboard() {
       ) : (
         <>
           {isNewTeacher && <GetStartedCard />}
+
+          {!isNewTeacher && <TowerGlance slots={slots} plantMap={plantMap} seedPods={seedBox.pods} />}
 
           {!isNewTeacher && <CoachCards userId={user.id} slots={slots} maintenance={data.maintenance} />}
 

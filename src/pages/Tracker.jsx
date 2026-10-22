@@ -26,7 +26,7 @@ const ALL_SLOT_IDS = SLOT_IDS;
 
 const STATUSES = ["Empty", "Germinating", "Growing", "Ready to Harvest", "Monitor"];
 
-const STATUS_STYLE = {
+export const STATUS_STYLE = {
   "Empty":             { bg: "bg-gray-100",    text: "text-gray-500",   border: "border-gray-200",   dot: "bg-gray-400"   },
   "Germinating":       { bg: "bg-blue-50",     text: "text-blue-700",   border: "border-blue-200",   dot: "bg-blue-400"   },
   "Growing":           { bg: "bg-teal-50",     text: "text-teal-700",   border: "border-teal-200",   dot: "bg-teal-500"   },
@@ -227,6 +227,14 @@ export default function Tracker() {
     setLoading(true);
     loadData();
   }
+
+  // Opened from a link like #/tracker?slot=A3 (the Gardyn tab's tower map).
+  const linkedSlot = params.get("slot");
+  useEffect(() => {
+    if (loading || !linkedSlot) return;
+    if (slots[linkedSlot]) setEditSlot(linkedSlot);
+    setParams({}, { replace: true });
+  }, [loading, linkedSlot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openEditor(id, trigger) {
     lastTriggerRef.current = trigger;
