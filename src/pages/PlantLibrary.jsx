@@ -55,6 +55,17 @@ export default function PlantLibrary() {
   const [sort,    setSort]    = useState("name");
   const [expanded, setExpanded] = useState(null); // plant name or null
 
+  // #/plants?plant=Zinnia (from the seed box): show that plant's card, open.
+  const linkedPlant = params.get("plant");
+  useEffect(() => {
+    if (loading || !linkedPlant) return;
+    const p = plants.find((x) => x.name.toLowerCase() === linkedPlant.toLowerCase());
+    if (!p) return;
+    setSearch(""); setCat("All"); setZone("All"); setSkill("All");
+    setExpanded(p.name);
+    setTimeout(() => document.getElementById(plantCardId(p.name))?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  }, [loading, linkedPlant, plants]);
+
   /* ── Load plants ─────────────────────────────────────────── */
   useEffect(() => {
     async function load() {
@@ -320,6 +331,8 @@ export default function PlantLibrary() {
 }
 
 /* ─── Plant Card ─────────────────────────────────────────── */
+const plantCardId = (name) => `plant-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
 function PlantCard({ plant, isExpanded, onToggle }) {
   const zoneMeta = ZONE_META[plant.light_zone] || null;
   const catIcon  = CATEGORY_ICONS[plant.category] || "🌱";
@@ -331,6 +344,8 @@ function PlantCard({ plant, isExpanded, onToggle }) {
                   transition-shadow hover:shadow-lg
                   ${isExpanded ? "border-teal-300" : "border-gray-200"}`}
       role="region"
+      id={plantCardId(plant.name)}
+      style={{ scrollMarginTop: "5rem" }}
       aria-label={`${plant.name} plant card`}
     >
       {/* ── Card header ──────────────────────────────────────── */}

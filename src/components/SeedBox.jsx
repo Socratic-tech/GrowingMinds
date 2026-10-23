@@ -152,7 +152,14 @@ export default function SeedBox({ userId, box, plants, onCustomAdded, planLink =
               <li key={r.id} className="py-1.5 flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${z?.dot || "bg-gray-300"}`} aria-hidden="true" />
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-semibold text-gray-900 truncate">{r.plant_name}</span>
+                  {/* Full info: the plant's card in the Plant Library (your own plants: My plants). In the
+                      planner it opens in a new tab so the plan isn't lost. */}
+                  <Link to={plantMap[r.plant_name]?.custom ? "/plants?mine=1" : `/plants?plant=${encodeURIComponent(r.plant_name)}`}
+                    target={compact ? "_blank" : undefined} rel={compact ? "noopener" : undefined}
+                    title={`Full info for ${r.plant_name}`}
+                    className="block text-sm font-semibold text-teal-900 underline decoration-teal-300 underline-offset-2 hover:decoration-teal-700 truncate">
+                    {r.plant_name}
+                  </Link>
                   <span className="block text-[11px] text-gray-500">{z ? z.label : "Light not set"}</span>
                 </span>
                 <span className="flex items-center gap-1" role="group" aria-label={`How many ${r.plant_name}`}>

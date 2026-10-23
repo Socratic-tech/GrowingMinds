@@ -22,7 +22,7 @@ export default function MyPlants({ userId, rows, reload, catalogNames, autoOpen 
   const [editing, setEditing] = useState(null); // id or null
   const [busy, setBusy] = useState(false);
   const ref = useRef(null);
-  useEffect(() => { if (autoOpen) ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [autoOpen]);
+  useEffect(() => { if (autoOpen) { setOpen(true); ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }); } }, [autoOpen]);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const num = (v) => (v === "" ? null : Math.round(Number(v)));
