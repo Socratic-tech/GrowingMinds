@@ -25,4 +25,9 @@ CREATE POLICY seed_box_insert ON public.seed_box FOR INSERT TO authenticated
   WITH CHECK (user_id = auth.uid() AND public.is_approved_educator()
               AND (SELECT count(*) FROM public.seed_box s WHERE s.user_id = auth.uid()) < 150);
 
+-- Check: both rows should show no has_feature in with_check.
+SELECT tablename, policyname, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND policyname IN ('custom_plants_insert', 'seed_box_insert');
+
 COMMIT;

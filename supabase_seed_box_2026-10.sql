@@ -6,8 +6,9 @@
 -- seed_box: the yCubes a teacher has on hand (plant name + how many).
 -- One box per teacher, shared by all their towers. Plant names are the
 -- same text the Tracker stores (catalog or the teacher's custom plants).
--- Uses the same admin switch as custom plants ('custom_plants'): only
--- teachers with it on can add; everyone can still read/clear their own.
+-- Every approved educator can add (since Oct 2026; this file used to
+-- require the 'custom_plants' switch, so re-running an old copy blocked
+-- teachers without it).
 -- =====================================================================
 
 BEGIN;
@@ -27,7 +28,7 @@ CREATE POLICY seed_box_read ON public.seed_box FOR SELECT TO authenticated
   USING (user_id = auth.uid());
 DROP POLICY IF EXISTS seed_box_insert ON public.seed_box;
 CREATE POLICY seed_box_insert ON public.seed_box FOR INSERT TO authenticated
-  WITH CHECK (user_id = auth.uid() AND public.is_approved_educator() AND public.has_feature('custom_plants')
+  WITH CHECK (user_id = auth.uid() AND public.is_approved_educator()
               AND (SELECT count(*) FROM public.seed_box s WHERE s.user_id = auth.uid()) < 150);
 DROP POLICY IF EXISTS seed_box_update ON public.seed_box;
 CREATE POLICY seed_box_update ON public.seed_box FOR UPDATE TO authenticated
