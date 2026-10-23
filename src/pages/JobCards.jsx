@@ -1,24 +1,84 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { supabase } from "../supabase/client";
+import { useAuth } from "../context/AuthProvider";
+import { useToast } from "../components/ui/toast";
 import { JOB_CARDS } from "../data/jobCards";
+import JobCard from "../components/JobCard";
+import JobCardMaker, { cardToForm } from "../components/JobCardMaker";
 
 // Printable student job cards. Print CSS hides the app shell and prints only
 // the selected cards, two per page, each with blanks for team and date.
+// Teachers can add their own cards (custom_job_cards, supabase_job_cards_2026-10.sql),
+// copy a built-in one to edit, or print a blank write-in card.
 const PRINT_CSS = `
 @media print {
   @page { margin: 0.5in; }
   body * { visibility: hidden !important; }
   #job-cards, #job-cards * { visibility: visible !important; }
   #job-cards { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
-  #job-cards .job-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; margin-bottom: 0.35in; }
-  #job-cards .job-card:nth-of-type(2n) { break-after: page; page-break-after: always; }
+  #job-cards .job-card { box-shadow: none !important; }
+  #job-cards > .job-card-wrap { break-inside: avoid; page-break-inside: avoid; margin-bottom: 0.35in; }
+  #job-cards > .job-card-wrap:nth-of-type(2n) { break-after: page; page-break-after: always; }
   #job-cards .no-print { display: none !important; }
 }`;
 
+const BLANK = { id: "blank", icon: "📝", title: "Blank write-in card", blank: true };
+const missingTable = (e) => e?.code === "42P01" || e?.code === "PGRST205" || /custom_job_cards|does not exist|could not find the table/i.test(e?.message || "");
+
 export default function JobCards() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const [mine, setMine] = useState([]);
+  const [setupNeeded, setSetupNeeded] = useState(false);
   const [picked, setPicked] = useState(() => new Set(JOB_CARDS.map((c) => c.id)));
+  const [maker, setMaker] = useState(null); // null, or { initial, editingId }
+
+  const load = useCallback(async () => {
+    if (!user?.id) return;
+    const { data, error } = await supabase.from("custom_job_cards").select("*").eq("user_id", user.id).order("created_at");
+    if (error) { setSetupNeeded(missingTable(error)); return; }
+    setMine((data || []).map((c) => ({ ...c, id: `mine:${c.id}`, dbId: c.id, mine: true })));
+  }, [user?.id]);
+  useEffect(() => { load(); }, [load]);
+
+  const all = [...JOB_CARDS, ...mine, BLANK];
   const toggle = (id) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const chosen = JOB_CARDS.filter((c) => picked.has(c.id));
+  const chosen = all.filter((c) => picked.has(c.id));
+
+  function openMaker(initial = null, editingId = null) {
+    setMaker({ initial, editingId });
+    requestAnimationFrame(() => document.getElementById("card-maker")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
+  async function save(row) {
+    const { data, error } = maker.editingId
+      ? await supabase.from("custom_job_cards").update({ ...row, updated_at: new Date().toISOString() }).eq("id", maker.editingId).select().single()
+      : await supabase.from("custom_job_cards").insert({ ...row, user_id: user.id }).select().single();
+    if (error) {
+      return showToast({ title: "Couldn't save the card", description: missingTable(error) ? "Job cards aren't set up yet. A Growing Minds admin needs to run supabase_job_cards_2026-10.sql." : error.message, type: "error" });
+    }
+    showToast({ title: maker.editingId ? "Card updated" : `${row.icon} ${row.title} saved`, type: "success" });
+    setMaker(null);
+    await load();
+    setPicked((p) => new Set([...p, `mine:${data.id}`]));
+  }
+
+  async function remove(c) {
+    if (!window.confirm(`Delete your card "${c.title}"?`)) return;
+    const { error } = await supabase.from("custom_job_cards").delete().eq("id", c.dbId);
+    if (error) return showToast({ title: "Couldn't delete", description: error.message, type: "error" });
+    setPicked((p) => { const n = new Set(p); n.delete(c.id); return n; });
+    load();
+  }
+
+  const chip = (c) => (
+    <label key={c.id} className={`flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-sm font-semibold cursor-pointer min-h-[40px]
+      ${picked.has(c.id) ? "border-teal-700 bg-teal-50 text-teal-900" : "border-gray-200 text-gray-600"}`}>
+      <input type="checkbox" className="accent-teal-700" checked={picked.has(c.id)} onChange={() => toggle(c.id)} />
+      <span aria-hidden="true">{c.icon}</span> {c.title}
+    </label>
+  );
 
   return (
     <div className="space-y-6 pb-24">
@@ -34,51 +94,56 @@ export default function JobCards() {
         </div>
       </div>
 
-      <fieldset className="bg-white rounded-2xl border border-gray-200 p-4">
+      <fieldset className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
         <legend className="text-sm font-bold text-gray-800 px-1">Cards to print</legend>
-        <div className="flex flex-wrap gap-2 mt-1">
-          {JOB_CARDS.map((c) => (
-            <label key={c.id} className={`flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-sm font-semibold cursor-pointer min-h-[40px]
-              ${picked.has(c.id) ? "border-teal-700 bg-teal-50 text-teal-900" : "border-gray-200 text-gray-600"}`}>
-              <input type="checkbox" className="accent-teal-700" checked={picked.has(c.id)} onChange={() => toggle(c.id)} />
-              <span aria-hidden="true">{c.icon}</span> {c.title}
-            </label>
-          ))}
+        <div className="flex flex-wrap gap-2">{JOB_CARDS.map(chip)}</div>
+        {mine.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-1">My cards</p>
+            <div className="flex flex-wrap gap-2">{mine.map(chip)}</div>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">{chip(BLANK)}</div>
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button type="button" onClick={() => window.print()} disabled={chosen.length === 0}
+            className="bg-teal-700 hover:bg-teal-800 text-white font-semibold rounded-xl px-5 py-3 disabled:opacity-40">
+            🖨️ Print {chosen.length} card{chosen.length === 1 ? "" : "s"}
+          </button>
+          {!maker && !setupNeeded && (
+            <button type="button" onClick={() => openMaker()} className="border-2 border-teal-700 text-teal-800 font-semibold rounded-xl px-4 py-2.5 hover:bg-teal-50">
+              ✏️ Make your own card
+            </button>
+          )}
         </div>
-        <button type="button" onClick={() => window.print()} disabled={chosen.length === 0}
-          className="mt-4 bg-teal-700 hover:bg-teal-800 text-white font-semibold rounded-xl px-5 py-3 disabled:opacity-40">
-          🖨️ Print {chosen.length} card{chosen.length === 1 ? "" : "s"}
-        </button>
+        {setupNeeded && (
+          <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2" role="status">
+            Making your own cards isn't set up yet. A Growing Minds admin needs to run <code>supabase_job_cards_2026-10.sql</code>. The blank write-in card works now.
+          </p>
+        )}
       </fieldset>
+
+      {maker && (
+        <JobCardMaker key={maker.editingId || JSON.stringify(maker.initial)} initial={maker.initial} editing={Boolean(maker.editingId)}
+          onSave={save} onCancel={() => setMaker(null)} />
+      )}
 
       <div id="job-cards" className="grid gap-4 md:grid-cols-2">
         {chosen.map((c) => (
-          <article key={c.id} className="job-card bg-white rounded-3xl border-4 border-teal-700 p-6 shadow-md space-y-4"
-                   style={{ fontFamily: "Tahoma, Verdana, sans-serif" }}>
-            <header className="flex items-center gap-3">
-              <span aria-hidden="true" className="text-5xl">{c.icon}</span>
-              <div className="flex-1">
-                <h2 className="text-2xl font-bold text-teal-900">{c.title}</h2>
-                <p className={`text-sm font-bold ${c.adult ? "text-amber-800" : "text-teal-800"}`}>
-                  {c.adult ? "👩‍🏫 " : "👥 "}{c.who} · about {c.minutes} minutes
-                </p>
+          <div key={c.id} className="job-card-wrap space-y-1">
+            <JobCard card={c} blank={c.blank} />
+            {!c.blank && !setupNeeded && (
+              <div className="no-print flex gap-3 px-2 text-xs">
+                {c.mine ? (
+                  <>
+                    <button type="button" onClick={() => openMaker(cardToForm(c), c.dbId)} className="font-semibold text-teal-800 underline">✏️ Edit</button>
+                    <button type="button" onClick={() => remove(c)} className="text-red-700 underline">Delete</button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => openMaker(cardToForm(c, { copy: true }))} className="font-semibold text-teal-800 underline">📄 Copy and edit</button>
+                )}
               </div>
-            </header>
-            <ol className="space-y-2">
-              {c.steps.map((s, i) => (
-                <li key={i} className="flex gap-3 text-lg text-gray-900 leading-snug">
-                  <span aria-hidden="true" className="w-8 h-8 shrink-0 rounded-full border-2 border-teal-700 text-teal-800 font-bold flex items-center justify-center">{i + 1}</span>
-                  <span className="pt-0.5">{s}</span>
-                </li>
-              ))}
-            </ol>
-            <p className="text-base font-bold text-red-800 bg-red-50 border-2 border-red-200 rounded-xl px-3 py-2">⚠️ {c.safety}</p>
-            <div className="grid grid-cols-2 gap-4 text-base text-gray-800 pt-1">
-              <p>Team: <span className="inline-block border-b-2 border-gray-400 w-3/5 align-bottom">&nbsp;</span></p>
-              <p>Date: <span className="inline-block border-b-2 border-gray-400 w-3/5 align-bottom">&nbsp;</span></p>
-            </div>
-            <Link to={`/learn/${c.guide}`} className="no-print inline-block text-xs font-semibold text-teal-800 underline">Teacher guide for this job →</Link>
-          </article>
+            )}
+          </div>
         ))}
       </div>
     </div>
