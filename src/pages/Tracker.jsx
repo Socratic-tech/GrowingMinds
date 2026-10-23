@@ -608,23 +608,21 @@ export default function Tracker() {
 }
 
 /* ─── Plant picker groups ───────────────────────────────── */
-// Store yCubes grouped like the Gardyn store. Plants Gardyn no longer
-// sells stay pickable (teachers stock up before a plant leaves the store)
-// and are listed last, labeled.
+// Grouped like the Gardyn store. Plants not on sale right now (seasonal,
+// starter-kit and retired yCubes from Gardyn's placement guide) sit in
+// their own category, labeled "not in store".
 const PICKER_ORDER = ["Greens", "Herbs", "Fruits & Veggies", "Flowers"];
 function plantGroups(plants) {
   const groups = new Map();
-  const retired = [], mine = [];
+  const mine = [];
   for (const p of plants) {
     if (p.custom) { mine.push(p); continue; }
-    if (p.in_gardyn_store === false) { retired.push(p); continue; }
     const g = PICKER_ORDER.includes(p.category) ? p.category : "Other plants";
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(p);
   }
   const out = [...PICKER_ORDER, "Other plants"].filter((g) => groups.has(g)).map((g) => [g, groups.get(g)]);
   if (mine.length) out.unshift(["My plants", mine]);
-  if (retired.length) out.push(["No longer sold by Gardyn", retired]);
   return out;
 }
 
@@ -776,7 +774,7 @@ function SlotEditPanel({ slotId, slot, slots, plants, plantMap, onSave, onClose,
               <optgroup key={group} label={group}>
                 {list.map((p) => (
                   <option key={p.name} value={p.name}>
-                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}{p.in_gardyn_store === false ? " · discontinued" : ""}{p.custom ? " · custom" : ""}
+                    {p.name}{LIGHT_ZONE_META[p.light_zone] ? ` · ${LIGHT_ZONE_META[p.light_zone].label}` : ""}{p.in_gardyn_store === false ? " · not in store" : ""}{p.custom ? " · custom" : ""}
                   </option>
                 ))}
               </optgroup>
